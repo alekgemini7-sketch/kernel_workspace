@@ -1,4 +1,4 @@
-name: Build Kernel - KernelSU v3.3.0-30
+name: Build Kernel - Backslash KernelSU v3.3.0-30
 
 on:
   workflow_dispatch:
@@ -7,75 +7,78 @@ permissions:
   contents: read
 
 jobs:
-  kernel-compile:
-    name: Build Kernel
+  kernel-build:
+    name: Build ARM64 Kernel
     runs-on: ubuntu-22.04
+
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+
+      BSP_BUILD_FAMILY: sharkl3
+      BSP_BUILD_ANDROID_OS: y
+
+      DEFCONFIG: a3core_eur_open_defconfig
+
+      KSU_VERSION: v3.3.0-30
 
     steps:
 
-      # ==========================================================
-      # CHECKOUT
-      # ==========================================================
+      # =========================================================
+      # 1. CHECKOUT
+      # =========================================================
 
-      - name: Checkout Source Kernel
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
           submodules: false
 
-      # ==========================================================
-      # SHELL
-      # ==========================================================
+      # =========================================================
+      # 2. SYSTEM INFORMATION
+      # =========================================================
 
-      - name: Setup Bash
+      - name: System Information
         shell: bash
         run: |
           set -e
 
-          sudo ln -sf /bin/bash /bin/sh
+          echo "=================================================="
+          echo "SYSTEM INFORMATION"
+          echo "=================================================="
 
-          echo "===== SHELL ====="
-          ls -l /bin/sh
-          bash --version | head -n 1
+          echo ""
+          echo "OS:"
+          cat /etc/os-release
 
-      # ==========================================================
-      # CACHE TOOLCHAIN
-      # ==========================================================
+          echo ""
+          echo "Kernel:"
+          uname -a
 
-      - name: Cache Toolchains
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/toolchain_download
-          key: kernel-toolchains-clang-r383902b-gcc14-v3
-          restore-keys: |
-            kernel-toolchains-
+          echo ""
+          echo "CPU:"
+          nproc
 
-      # ==========================================================
-      # CACHE APT
-      # ==========================================================
+          echo ""
+          echo "Memory:"
+          free -h
 
-      - name: Cache APT
-        uses: actions/cache@v4
-        with:
-          path: |
-            /var/cache/apt/archives
-          key: apt-ubuntu-22.04-kernel-v3
-          restore-keys: |
-            apt-ubuntu-22.04-kernel-
+          echo ""
+          echo "Disk:"
+          df -h .
 
-      # ==========================================================
-      # SYSTEM DEPENDENCIES
-      # ==========================================================
+      # =========================================================
+      # 3. INSTALL DEPENDENCIES
+      # =========================================================
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies
         shell: bash
         run: |
           set -e
 
           sudo apt-get update
 
-          sudo apt-get install -y \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential \
             bc \
             bison \
@@ -88,11 +91,9 @@ jobs:
             device-tree-compiler \
             libc++-dev \
             libc++abi-dev \
-            clang \
-            lld \
-            llvm \
             python3 \
             python3-minimal \
+            python-is-python3 \
             git \
             zip \
             unzip \
@@ -102,29 +103,50 @@ jobs:
             tar \
             gzip \
             xz-utils \
+            rsync \
+            file \
+            ca-certificates \
             gcc-aarch64-linux-gnu \
             binutils-aarch64-linux-gnu \
             ccache
 
           echo ""
-          echo "===== DEPENDENCIES INSTALLED ====="
+          echo "=================================================="
+          echo "DEPENDENCIES INSTALLED"
+          echo "=================================================="
 
-          gcc --version | head -n 1
-          clang --version | head -n 1
-          ld.lld --version | head -n 1
-          make --version | head -n 1
+          echo ""
+          echo "GCC:"
+          gcc --version
+
+          echo ""
+          echo "Clang:"
+          clang --version
+
+          echo ""
+          echo "LLD:"
+          ld.lld --version
+
+          echo ""
+          echo "Make:"
+          make --version
+
+          echo ""
+          echo "Git:"
           git --version
 
-      # ==========================================================
-      # LIBYAML CHECK
-      # ==========================================================
+      # =========================================================
+      # 4. LIBYAML TEST
+      # =========================================================
 
       - name: Verify LibYAML
         shell: bash
         run: |
           set -e
 
-          echo "===== PKG-CONFIG YAML ====="
+          echo "=================================================="
+          echo "LIBYAML CHECK"
+          echo "=================================================="
 
           pkg-config --cflags yaml-0.1
           pkg-config --libs yaml-0.1
@@ -152,13 +174,30 @@ jobs:
 
           /tmp/test_yaml
 
-          echo "[OK] LibYAML works."
+          rm -f /tmp/test_yaml.c
+          rm -f /tmp/test_yaml
 
-      # ==========================================================
-      # DOWNLOAD TOOLCHAIN
-      # ==========================================================
+          echo ""
+          echo "[OK] LibYAML is working."
 
-      - name: Prepare Toolchain
+      # =========================================================
+      # 5. CACHE TOOLCHAIN
+      # =========================================================
+
+      - name: Restore Toolchain Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/toolchain_download
+          key: kernel-toolchain-clang-r383902b-gcc14-v4
+          restore-keys: |
+            kernel-toolchain-
+
+      # =========================================================
+      # 6. DOWNLOAD TOOLCHAINS
+      # =========================================================
+
+      - name: Setup Toolchains
         shell: bash
         run: |
           set -e
@@ -169,54 +208,66 @@ jobs:
             "${TOOLCHAIN_DIR}/clang-r383902b" \
             "${TOOLCHAIN_DIR}/gcc-14.3"
 
-          # ======================================================
+          # =====================================================
           # CLANG R383902B
-          # ======================================================
+          # =====================================================
 
-          if [ ! -x \
-            "${TOOLCHAIN_DIR}/clang-r383902b/bin/clang" ]; then
+          if [ ! -x "${TOOLCHAIN_DIR}/clang-r383902b/bin/clang" ]; then
 
-            echo "[+] Downloading Clang r383902b..."
+            echo "=================================================="
+            echo "DOWNLOADING CLANG R383902B"
+            echo "=================================================="
+
+            rm -rf "${TOOLCHAIN_DIR}/clang-r383902b"
+
+            mkdir -p \
+              "${TOOLCHAIN_DIR}/clang-r383902b"
 
             wget \
-              --progress=dot:giga \
               --retry-connrefused \
               --tries=5 \
-              --timeout=30 \
+              --timeout=60 \
+              --progress=dot:giga \
               "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz" \
               -O /tmp/clang-r383902b.tar.gz
 
             tar \
-              -xf /tmp/clang-r383902b.tar.gz \
+              -xzf /tmp/clang-r383902b.tar.gz \
               -C "${TOOLCHAIN_DIR}/clang-r383902b"
 
             rm -f /tmp/clang-r383902b.tar.gz
 
           else
 
-            echo "[=] Clang r383902b already cached."
+            echo "[OK] Clang r383902b already cached."
 
           fi
 
-          # ======================================================
+          # =====================================================
           # GCC 14.3
-          # ======================================================
+          # =====================================================
 
-          if [ ! -x \
-            "${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc" ]; then
+          if [ ! -x "${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc" ]; then
 
-            echo "[+] Downloading ARM GCC 14.3..."
+            echo "=================================================="
+            echo "DOWNLOADING ARM GCC 14.3"
+            echo "=================================================="
+
+            rm -rf "${TOOLCHAIN_DIR}/gcc-14.3"
+
+            mkdir -p \
+              "${TOOLCHAIN_DIR}/gcc-14.3"
 
             wget \
-              --progress=dot:giga \
               --retry-connrefused \
               --tries=5 \
-              --timeout=30 \
+              --timeout=60 \
+              --progress=dot:giga \
               "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
               -O /tmp/gcc-14.3.tar.xz
 
             tar \
-              -xf /tmp/gcc-14.3.tar.xz \
+              -xJf /tmp/gcc-14.3.tar.xz \
               -C "${TOOLCHAIN_DIR}/gcc-14.3" \
               --strip-components=1
 
@@ -224,95 +275,136 @@ jobs:
 
           else
 
-            echo "[=] GCC 14.3 already cached."
+            echo "[OK] GCC 14.3 already cached."
 
           fi
 
-          # ======================================================
-          # VERIFY
-          # ======================================================
+          # =====================================================
+          # CHECK FILES
+          # =====================================================
 
           echo ""
-          echo "=========================================="
-          echo "TOOLCHAIN CHECK"
-          echo "=========================================="
+          echo "=================================================="
+          echo "TOOLCHAIN FILE CHECK"
+          echo "=================================================="
 
-          echo ""
-          echo "Clang:"
-          "${TOOLCHAIN_DIR}/clang-r383902b/bin/clang" \
-            --version | head -n 3
+          test -x \
+            "${TOOLCHAIN_DIR}/clang-r383902b/bin/clang"
 
-          echo ""
-          echo "AArch64 GCC:"
-          "${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc" \
-            --version | head -n 3
+          test -x \
+            "${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc"
 
-          echo ""
-          echo "LLVM LD:"
-          "${TOOLCHAIN_DIR}/clang-r383902b/bin/ld.lld" \
-            --version | head -n 2
+          echo "[OK] Required toolchain binaries exist."
 
-      # ==========================================================
-      # EXPORT TOOLCHAIN PATH
-      # ==========================================================
+      # =========================================================
+      # 7. TOOLCHAIN ENVIRONMENT
+      # =========================================================
 
-      - name: Setup Toolchain Environment
+      - name: Configure Toolchain Environment
         shell: bash
         run: |
           set -e
 
           TOOLCHAIN_DIR="${GITHUB_WORKSPACE}/toolchain_download"
 
-          echo "${TOOLCHAIN_DIR}/clang-r383902b/bin" >> "$GITHUB_PATH"
-          echo "${TOOLCHAIN_DIR}/gcc-14.3/bin" >> "$GITHUB_PATH"
+          CLANG_BIN="${TOOLCHAIN_DIR}/clang-r383902b/bin"
+          GCC_BIN="${TOOLCHAIN_DIR}/gcc-14.3/bin"
 
-          echo "ARCH=arm64" >> "$GITHUB_ENV"
-          echo "SUBARCH=arm64" >> "$GITHUB_ENV"
+          echo "${CLANG_BIN}" >> "${GITHUB_PATH}"
+          echo "${GCC_BIN}" >> "${GITHUB_PATH}"
 
-          echo "CC=clang" >> "$GITHUB_ENV"
-          echo "LD=ld.lld" >> "$GITHUB_ENV"
-          echo "AR=llvm-ar" >> "$GITHUB_ENV"
-          echo "NM=llvm-nm" >> "$GITHUB_ENV"
+          echo "ARCH=arm64" >> "${GITHUB_ENV}"
+          echo "SUBARCH=arm64" >> "${GITHUB_ENV}"
 
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "$GITHUB_ENV"
+          echo "CC=clang" >> "${GITHUB_ENV}"
+          echo "LD=ld.lld" >> "${GITHUB_ENV}"
+          echo "AR=llvm-ar" >> "${GITHUB_ENV}"
+          echo "NM=llvm-nm" >> "${GITHUB_ENV}"
 
-          echo "BSP_BUILD_FAMILY=sharkl3" >> "$GITHUB_ENV"
-          echo "BSP_BUILD_ANDROID_OS=y" >> "$GITHUB_ENV"
+          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "${GITHUB_ENV}"
 
-          echo "CROSS_COMPILE=${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-" >> "$GITHUB_ENV"
+          echo "CROSS_COMPILE=${GCC_BIN}/aarch64-none-linux-gnu-" >> "${GITHUB_ENV}"
 
-          echo "CROSS_COMPILE_ARM32=${TOOLCHAIN_DIR}/gcc-14.3/bin/arm-none-linux-gnueabihf-" >> "$GITHUB_ENV"
+          # GCC package used here is AArch64.
+          # Only export ARM32 compiler if it actually exists.
+          if [ -x "${GCC_BIN}/arm-none-linux-gnueabihf-gcc" ]; then
+            echo "CROSS_COMPILE_ARM32=${GCC_BIN}/arm-none-linux-gnueabihf-" >> "${GITHUB_ENV}"
+          else
+            echo "CROSS_COMPILE_ARM32=arm-linux-gnueabihf-" >> "${GITHUB_ENV}"
+          fi
+
+          echo "BSP_BUILD_FAMILY=sharkl3" >> "${GITHUB_ENV}"
+          echo "BSP_BUILD_ANDROID_OS=y" >> "${GITHUB_ENV}"
 
           echo ""
-          echo "===== ENVIRONMENT ====="
+          echo "=================================================="
+          echo "TOOLCHAIN CONFIGURATION"
+          echo "=================================================="
 
+          echo "CLANG_BIN=${CLANG_BIN}"
+          echo "GCC_BIN=${GCC_BIN}"
           echo "ARCH=arm64"
-          echo "SUBARCH=arm64"
           echo "CC=clang"
           echo "LD=ld.lld"
           echo "CLANG_TRIPLE=aarch64-linux-gnu-"
-          echo "BSP_BUILD_FAMILY=sharkl3"
-          echo "BSP_BUILD_ANDROID_OS=y"
+          echo "CROSS_COMPILE=${GCC_BIN}/aarch64-none-linux-gnu-"
 
-      # ==========================================================
-      # CHECK SOURCE
-      # ==========================================================
+      # =========================================================
+      # 8. TOOLCHAIN TEST
+      # =========================================================
 
-      - name: Check Kernel Source
+      - name: Verify Selected Toolchain
         shell: bash
         run: |
           set -e
 
-          echo "=========================================="
+          echo "=================================================="
+          echo "SELECTED TOOLCHAIN"
+          echo "=================================================="
+
+          echo ""
+          echo "clang:"
+          command -v clang
+          clang --version
+
+          echo ""
+          echo "ld.lld:"
+          command -v ld.lld
+          ld.lld --version
+
+          echo ""
+          echo "llvm-ar:"
+          command -v llvm-ar
+          llvm-ar --version
+
+          echo ""
+          echo "llvm-nm:"
+          command -v llvm-nm
+          llvm-nm --version
+
+          echo ""
+          echo "aarch64-none-linux-gnu-gcc:"
+          command -v aarch64-none-linux-gnu-gcc
+          aarch64-none-linux-gnu-gcc --version
+
+          echo ""
+          echo "[OK] Toolchain is ready."
+
+      # =========================================================
+      # 9. KERNEL SOURCE CHECK
+      # =========================================================
+
+      - name: Verify Kernel Source
+        shell: bash
+        run: |
+          set -e
+
+          echo "=================================================="
           echo "KERNEL SOURCE"
-          echo "=========================================="
+          echo "=================================================="
 
           echo ""
-          echo "Repository:"
-          git remote -v || true
-
-          echo ""
-          echo "Commit:"
+          echo "Git commit:"
           git rev-parse HEAD
 
           echo ""
@@ -324,42 +416,24 @@ jobs:
 
           echo ""
           echo "Defconfig:"
-          test -f arch/arm64/configs/a3core_eur_open_defconfig
 
-          echo "[OK] Kernel source looks valid."
+          test -f \
+            "arch/arm64/configs/${DEFCONFIG}"
 
-      # ==========================================================
-      # PRE-BUILD KSU CHECK
-      # ==========================================================
-
-      - name: Check Existing KernelSU
-        shell: bash
-        run: |
-          echo "=========================================="
-          echo "EXISTING KERNELSU CHECK"
-          echo "=========================================="
-
-          if [ -d KernelSU ]; then
-            echo "[!] Existing KernelSU directory found."
-            ls -la KernelSU | head -n 30
-          else
-            echo "[=] No KernelSU directory yet."
-          fi
+          echo "${DEFCONFIG}"
 
           echo ""
-          echo "drivers/kernelsu:"
+          echo "Architecture:"
+          test -d arch/arm64
 
-          if [ -e drivers/kernelsu ]; then
-            ls -la drivers/kernelsu
-          else
-            echo "[=] drivers/kernelsu does not currently exist."
-          fi
+          echo ""
+          echo "[OK] Kernel source verified."
 
-      # ==========================================================
-      # BUILD KERNEL
-      # ==========================================================
+      # =========================================================
+      # 10. RUN BUILD SCRIPT
+      # =========================================================
 
-      - name: Build Kernel With KernelSU v3.3.0-30
+      - name: Build Kernel
         shell: bash
         run: |
           set -e
@@ -367,109 +441,208 @@ jobs:
           chmod +x b.sh
 
           echo ""
-          echo "=========================================="
-          echo "STARTING KERNEL BUILD"
-          echo "=========================================="
+          echo "=================================================="
+          echo "STARTING B.SH"
+          echo "=================================================="
 
           ./b.sh
 
-      # ==========================================================
-      # VERIFY BUILD
-      # ==========================================================
+      # =========================================================
+      # 11. VERIFY KERNELSU
+      # =========================================================
 
-      - name: Verify Build Result
+      - name: Verify KernelSU v3.3.0-30
         if: always()
         shell: bash
         run: |
-          echo ""
-          echo "=========================================="
-          echo "BUILD RESULT"
-          echo "=========================================="
-
-          if [ -f "out/arch/arm64/boot/Image" ]; then
-            echo "[OK] Kernel Image exists."
-
-            ls -lh \
-              "out/arch/arm64/boot/Image"
-
-          else
-            echo "[!] Kernel Image was not generated."
-          fi
-
-          echo ""
-          echo "=========================================="
+          echo "=================================================="
           echo "KERNELSU VERIFICATION"
-          echo "=========================================="
+          echo "=================================================="
 
-          if [ -d "KernelSU" ]; then
-
-            cd KernelSU
-
-            echo ""
-            echo "KernelSU tag:"
-            git describe --tags --always || true
-
-            echo ""
-            echo "KernelSU commit:"
-            git rev-parse HEAD || true
-
-            echo ""
-            echo "KernelSU latest commit:"
-            git log -1 --oneline || true
-
-            cd ..
-
-          else
-
-            echo "[!] KernelSU directory not found."
-
+          if [ ! -d "KernelSU" ]; then
+            echo "[ERROR] KernelSU directory does not exist."
+            exit 0
           fi
 
+          cd KernelSU
+
           echo ""
-          echo "=========================================="
-          echo "UAPI VERIFICATION"
-          echo "=========================================="
+          echo "Remote:"
+          git remote -v || true
+
+          echo ""
+          echo "Current commit:"
+          git rev-parse HEAD || true
+
+          echo ""
+          echo "Current tag:"
+          git describe --tags --always || true
+
+          echo ""
+          echo "Exact tag:"
+          git describe --tags --exact-match 2>/dev/null || true
+
+          cd ..
+
+          echo ""
+          echo "Expected:"
+          echo "${KSU_VERSION}"
+
+          echo ""
+          echo "UAPI header:"
 
           if [ -f "KernelSU/uapi/supercall.h" ]; then
-
-            grep -n \
+            grep \
+              -n \
               "KERNEL_SU_UAPI_VERSION" \
               KernelSU/uapi/supercall.h || true
-
           else
-
-            echo "[!] supercall.h not found."
-
+            echo "supercall.h not found."
           fi
 
           echo ""
-          echo "=========================================="
-          echo "KERNEL CONFIG"
-          echo "=========================================="
+          echo "KernelSU config:"
 
           if [ -f "out/.config" ]; then
-
-            grep -n \
+            grep \
+              -n \
               "^CONFIG_KSU" \
               out/.config || true
-
           else
-
-            echo "[!] out/.config not found."
-
+            echo "out/.config not found."
           fi
 
-      # ==========================================================
-      # SHOW ARTIFACTS
-      # ==========================================================
+      # =========================================================
+      # 12. VERIFY IMAGE
+      # =========================================================
 
-      - name: List Output Artifacts
+      - name: Verify Kernel Image
         if: always()
         shell: bash
         run: |
-          echo "=========================================="
+          echo "=================================================="
+          echo "KERNEL IMAGE VERIFICATION"
+          echo "=================================================="
+
+          IMAGE="${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
+
+          if [ -f "${IMAGE}" ]; then
+
+            echo "[OK] Image generated."
+
+            ls -lh "${IMAGE}"
+
+            echo ""
+            echo "File:"
+            file "${IMAGE}"
+
+            echo ""
+            echo "SHA256:"
+            sha256sum "${IMAGE}"
+
+          else
+
+            echo "[ERROR] Image was not generated."
+
+          fi
+
+      # =========================================================
+      # 13. VERIFY MODULES
+      # =========================================================
+
+      - name: Verify Kernel Modules
+        if: always()
+        shell: bash
+        run: |
+          echo "=================================================="
+          echo "KERNEL MODULE VERIFICATION"
+          echo "=================================================="
+
+          if [ -d "out" ]; then
+
+            MODULE_COUNT="$(
+              find out \
+                -type f \
+                -name "*.ko" \
+                | wc -l
+            )"
+
+            echo "Module count: ${MODULE_COUNT}"
+
+            if [ "${MODULE_COUNT}" -gt 0 ]; then
+
+              find out \
+                -type f \
+                -name "*.ko" \
+                | sort
+
+            else
+
+              echo "No .ko modules found."
+
+            fi
+
+          else
+
+            echo "out directory does not exist."
+
+          fi
+
+      # =========================================================
+      # 14. VERIFY DTBS
+      # =========================================================
+
+      - name: Verify DTBs
+        if: always()
+        shell: bash
+        run: |
+          echo "=================================================="
+          echo "DTB / DTBO VERIFICATION"
+          echo "=================================================="
+
+          DTB_DIR="out/arch/arm64/boot/dts"
+
+          if [ -d "${DTB_DIR}" ]; then
+
+            DTB_COUNT="$(
+              find "${DTB_DIR}" \
+                -type f \
+                \( \
+                  -name "*.dtb" \
+                  -o \
+                  -name "*.dtbo" \
+                \) \
+                | wc -l
+            )"
+
+            echo "DTB/DTBO count: ${DTB_COUNT}"
+
+            find "${DTB_DIR}" \
+              -type f \
+              \( \
+                -name "*.dtb" \
+                -o \
+                -name "*.dtbo" \
+              \) \
+              | sort
+
+          else
+
+            echo "DTB directory does not exist."
+
+          fi
+
+      # =========================================================
+      # 15. LIST OUTPUT
+      # =========================================================
+
+      - name: List Build Artifacts
+        if: always()
+        shell: bash
+        run: |
+          echo "=================================================="
           echo "OUTPUT ARTIFACTS"
-          echo "=========================================="
+          echo "=================================================="
 
           if [ -d "output_artifacts" ]; then
 
@@ -479,39 +652,40 @@ jobs:
 
           else
 
-            echo "[!] output_artifacts directory does not exist."
+            echo "output_artifacts does not exist."
 
           fi
 
-      # ==========================================================
-      # UPLOAD KERNEL ARTIFACT
-      # ==========================================================
+      # =========================================================
+      # 16. UPLOAD FINAL ARTIFACT
+      # =========================================================
 
       - name: Upload Kernel Artifact
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: KernelSU-v3.3.0-30-Sprd
           path: |
             ${{ github.workspace }}/output_artifacts/**
-          if-no-files-found: warn
+          if-no-files-found: error
           compression-level: 6
           retention-days: 7
 
-      # ==========================================================
-      # UPLOAD RAW BUILD OUTPUT
-      # ==========================================================
+      # =========================================================
+      # 17. UPLOAD DEBUG ARTIFACT WHEN BUILD FAILS
+      # =========================================================
 
-      - name: Upload Build Diagnostics
+      - name: Upload Build Debug Files
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: KernelSU-v3.3.0-30-Build-Diagnostics
+          name: Kernel-Build-Debug
           path: |
             ${{ github.workspace }}/out/.config
-            ${{ github.workspace }}/out/System.map
             ${{ github.workspace }}/out/Module.symvers
+            ${{ github.workspace }}/out/System.map
             ${{ github.workspace }}/out/.version
+            ${{ github.workspace }}/output_artifacts/**
           if-no-files-found: ignore
           compression-level: 6
           retention-days: 7
