@@ -2,7 +2,7 @@
 set -e
 
 # ============================================================
-# KERNELSU BACKSLASH v3.3.0-30 BUILD SCRIPT
+# KERNELSU BACKSLASH v3.3.0-39 BUILD SCRIPT
 # Target:
 #   - Linux 4.14
 #   - ARM64
@@ -29,7 +29,8 @@ export DEFCONFIG="a3core_eur_open_defconfig"
 # ============================================================
 
 export KSU_REPO="https://github.com/backslashxx/KernelSU.git"
-export KSU_VERSION="v3.3.0-30"
+# Mengambil dari env GitHub Actions jika ada, jika tidak default ke v3.3.0-39
+export KSU_VERSION="${KSU_VERSION:-v3.3.0-39}"
 
 cd "${KERNEL_ROOT}"
 
@@ -99,17 +100,13 @@ if grep -q 'source "drivers/kernelsu/Kconfig"' \
 fi
 
 # ------------------------------------------------------------
-# Use Backslash setup.sh with an EXPLICIT tag.
-#
-# IMPORTANT:
-# Do NOT run setup.sh without an argument.
-# We explicitly request v3.3.0-30.
+# Use Backslash setup.sh with dynamic KSU_VERSION tag
 # ------------------------------------------------------------
 
 echo "[+] Running Backslash KernelSU setup..."
 
 curl -fL --retry 3 --retry-delay 2 \
-    "https://raw.githubusercontent.com/backslashxx/KernelSU/v3.3.0-30/kernel/setup.sh" \
+    "https://raw.githubusercontent.com/backslashxx/KernelSU/${KSU_VERSION}/kernel/setup.sh" \
     -o /tmp/kernelsu-setup.sh
 
 chmod +x /tmp/kernelsu-setup.sh
