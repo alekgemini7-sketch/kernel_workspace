@@ -22,10 +22,14 @@ jobs:
 
       KSU_VERSION: v3.3.0-30
 
+      TOOLCHAIN_DIR: ${{ github.workspace }}/toolchain_download
+      CLANG_DIR: ${{ github.workspace }}/toolchain_download/clang-r383902b
+      GCC_DIR: ${{ github.workspace }}/toolchain_download/gcc-14.3
+
     steps:
 
       # =========================================================
-      # 1. CHECKOUT
+      # CHECKOUT
       # =========================================================
 
       - name: Checkout Kernel Source
@@ -35,7 +39,7 @@ jobs:
           submodules: false
 
       # =========================================================
-      # 2. SYSTEM INFORMATION
+      # SYSTEM INFO
       # =========================================================
 
       - name: System Information
@@ -52,10 +56,6 @@ jobs:
           cat /etc/os-release
 
           echo ""
-          echo "Kernel:"
-          uname -a
-
-          echo ""
           echo "CPU:"
           nproc
 
@@ -68,7 +68,7 @@ jobs:
           df -h .
 
       # =========================================================
-      # 3. INSTALL DEPENDENCIES
+      # DEPENDENCIES
       # =========================================================
 
       - name: Install Build Dependencies
@@ -116,27 +116,23 @@ jobs:
           echo "=================================================="
 
           echo ""
-          echo "GCC:"
+          echo "System GCC:"
           gcc --version
 
           echo ""
-          echo "Clang:"
+          echo "System Clang:"
           clang --version
 
           echo ""
-          echo "LLD:"
-          ld.lld --version
-
-          echo ""
-          echo "Make:"
+          echo "System Make:"
           make --version
 
           echo ""
-          echo "Git:"
+          echo "System Git:"
           git --version
 
       # =========================================================
-      # 4. LIBYAML TEST
+      # LIBYAML
       # =========================================================
 
       - name: Verify LibYAML
@@ -177,11 +173,10 @@ jobs:
           rm -f /tmp/test_yaml.c
           rm -f /tmp/test_yaml
 
-          echo ""
-          echo "[OK] LibYAML is working."
+          echo "[OK] LibYAML works."
 
       # =========================================================
-      # 5. CACHE TOOLCHAIN
+      # CACHE TOOLCHAIN
       # =========================================================
 
       - name: Restore Toolchain Cache
@@ -189,12 +184,12 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/toolchain_download
-          key: kernel-toolchain-clang-r383902b-gcc14-v4
+          key: kernel-toolchain-clang-r383902b-gcc14-v5
           restore-keys: |
             kernel-toolchain-
 
       # =========================================================
-      # 6. DOWNLOAD TOOLCHAINS
+      # DOWNLOAD TOOLCHAIN
       # =========================================================
 
       - name: Setup Toolchains
@@ -202,26 +197,22 @@ jobs:
         run: |
           set -e
 
-          TOOLCHAIN_DIR="${GITHUB_WORKSPACE}/toolchain_download"
-
-          mkdir -p \
-            "${TOOLCHAIN_DIR}/clang-r383902b" \
-            "${TOOLCHAIN_DIR}/gcc-14.3"
+          mkdir -p "${CLANG_DIR}"
+          mkdir -p "${GCC_DIR}"
 
           # =====================================================
           # CLANG R383902B
           # =====================================================
 
-          if [ ! -x "${TOOLCHAIN_DIR}/clang-r383902b/bin/clang" ]; then
+          if [ ! -x "${CLANG_DIR}/bin/clang" ]; then
 
             echo "=================================================="
             echo "DOWNLOADING CLANG R383902B"
             echo "=================================================="
 
-            rm -rf "${TOOLCHAIN_DIR}/clang-r383902b"
+            rm -rf "${CLANG_DIR}"
 
-            mkdir -p \
-              "${TOOLCHAIN_DIR}/clang-r383902b"
+            mkdir -p "${CLANG_DIR}"
 
             wget \
               --retry-connrefused \
@@ -233,7 +224,7 @@ jobs:
 
             tar \
               -xzf /tmp/clang-r383902b.tar.gz \
-              -C "${TOOLCHAIN_DIR}/clang-r383902b"
+              -C "${CLANG_DIR}"
 
             rm -f /tmp/clang-r383902b.tar.gz
 
@@ -247,16 +238,15 @@ jobs:
           # GCC 14.3
           # =====================================================
 
-          if [ ! -x "${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc" ]; then
+          if [ ! -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc" ]; then
 
             echo "=================================================="
             echo "DOWNLOADING ARM GCC 14.3"
             echo "=================================================="
 
-            rm -rf "${TOOLCHAIN_DIR}/gcc-14.3"
+            rm -rf "${GCC_DIR}"
 
-            mkdir -p \
-              "${TOOLCHAIN_DIR}/gcc-14.3"
+            mkdir -p "${GCC_DIR}"
 
             wget \
               --retry-connrefused \
@@ -268,7 +258,7 @@ jobs:
 
             tar \
               -xJf /tmp/gcc-14.3.tar.xz \
-              -C "${TOOLCHAIN_DIR}/gcc-14.3" \
+              -C "${GCC_DIR}" \
               --strip-components=1
 
             rm -f /tmp/gcc-14.3.tar.xz
@@ -279,39 +269,32 @@ jobs:
 
           fi
 
-          # =====================================================
-          # CHECK FILES
-          # =====================================================
-
-          echo ""
-          echo "=================================================="
-          echo "TOOLCHAIN FILE CHECK"
-          echo "=================================================="
-
-          test -x \
-            "${TOOLCHAIN_DIR}/clang-r383902b/bin/clang"
-
-          test -x \
-            "${TOOLCHAIN_DIR}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc"
-
-          echo "[OK] Required toolchain binaries exist."
-
       # =========================================================
-      # 7. TOOLCHAIN ENVIRONMENT
+      # TOOLCHAIN PATH
       # =========================================================
 
-      - name: Configure Toolchain Environment
+      - name: Configure Toolchain
         shell: bash
         run: |
           set -e
 
-          TOOLCHAIN_DIR="${GITHUB_WORKSPACE}/toolchain_download"
+          CLANG_BIN="${CLANG_DIR}/bin"
+          GCC_BIN="${GCC_DIR}/bin"
 
-          CLANG_BIN="${TOOLCHAIN_DIR}/clang-r383902b/bin"
-          GCC_BIN="${TOOLCHAIN_DIR}/gcc-14.3/bin"
+          echo "=================================================="
+          echo "CONFIGURING TOOLCHAIN"
+          echo "=================================================="
 
-          echo "${CLANG_BIN}" >> "${GITHUB_PATH}"
-          echo "${GCC_BIN}" >> "${GITHUB_PATH}"
+          # -----------------------------------------------------
+          # IMPORTANT:
+          # Export PATH immediately in THIS shell.
+          # Do not rely only on GITHUB_PATH because that affects
+          # subsequent steps, not the current process.
+          # -----------------------------------------------------
+
+          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
+
+          echo "PATH=${PATH}" >> "${GITHUB_ENV}"
 
           echo "ARCH=arm64" >> "${GITHUB_ENV}"
           echo "SUBARCH=arm64" >> "${GITHUB_ENV}"
@@ -325,8 +308,6 @@ jobs:
 
           echo "CROSS_COMPILE=${GCC_BIN}/aarch64-none-linux-gnu-" >> "${GITHUB_ENV}"
 
-          # GCC package used here is AArch64.
-          # Only export ARM32 compiler if it actually exists.
           if [ -x "${GCC_BIN}/arm-none-linux-gnueabihf-gcc" ]; then
             echo "CROSS_COMPILE_ARM32=${GCC_BIN}/arm-none-linux-gnueabihf-" >> "${GITHUB_ENV}"
           else
@@ -337,20 +318,15 @@ jobs:
           echo "BSP_BUILD_ANDROID_OS=y" >> "${GITHUB_ENV}"
 
           echo ""
-          echo "=================================================="
-          echo "TOOLCHAIN CONFIGURATION"
-          echo "=================================================="
-
           echo "CLANG_BIN=${CLANG_BIN}"
           echo "GCC_BIN=${GCC_BIN}"
-          echo "ARCH=arm64"
-          echo "CC=clang"
-          echo "LD=ld.lld"
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-"
-          echo "CROSS_COMPILE=${GCC_BIN}/aarch64-none-linux-gnu-"
+
+          echo ""
+          echo "PATH:"
+          printf '%s\n' "${PATH}"
 
       # =========================================================
-      # 8. TOOLCHAIN TEST
+      # VERIFY TOOLCHAIN
       # =========================================================
 
       - name: Verify Selected Toolchain
@@ -359,7 +335,7 @@ jobs:
           set -e
 
           echo "=================================================="
-          echo "SELECTED TOOLCHAIN"
+          echo "VERIFYING SELECTED TOOLCHAIN"
           echo "=================================================="
 
           echo ""
@@ -383,15 +359,17 @@ jobs:
           llvm-nm --version
 
           echo ""
-          echo "aarch64-none-linux-gnu-gcc:"
+          echo "AArch64 GCC:"
           command -v aarch64-none-linux-gnu-gcc
           aarch64-none-linux-gnu-gcc --version
 
           echo ""
-          echo "[OK] Toolchain is ready."
+          echo "=================================================="
+          echo "[OK] TOOLCHAIN IS READY"
+          echo "=================================================="
 
       # =========================================================
-      # 9. KERNEL SOURCE CHECK
+      # SOURCE CHECK
       # =========================================================
 
       - name: Verify Kernel Source
@@ -400,11 +378,11 @@ jobs:
           set -e
 
           echo "=================================================="
-          echo "KERNEL SOURCE"
+          echo "KERNEL SOURCE CHECK"
           echo "=================================================="
 
           echo ""
-          echo "Git commit:"
+          echo "Commit:"
           git rev-parse HEAD
 
           echo ""
@@ -423,14 +401,10 @@ jobs:
           echo "${DEFCONFIG}"
 
           echo ""
-          echo "Architecture:"
-          test -d arch/arm64
-
-          echo ""
           echo "[OK] Kernel source verified."
 
       # =========================================================
-      # 10. RUN BUILD SCRIPT
+      # BUILD
       # =========================================================
 
       - name: Build Kernel
@@ -440,18 +414,17 @@ jobs:
 
           chmod +x b.sh
 
-          echo ""
           echo "=================================================="
-          echo "STARTING B.SH"
+          echo "STARTING KERNEL BUILD"
           echo "=================================================="
 
           ./b.sh
 
       # =========================================================
-      # 11. VERIFY KERNELSU
+      # VERIFY KSU
       # =========================================================
 
-      - name: Verify KernelSU v3.3.0-30
+      - name: Verify KernelSU
         if: always()
         shell: bash
         run: |
@@ -459,61 +432,72 @@ jobs:
           echo "KERNELSU VERIFICATION"
           echo "=================================================="
 
-          if [ ! -d "KernelSU" ]; then
-            echo "[ERROR] KernelSU directory does not exist."
-            exit 0
+          if [ -d "KernelSU" ]; then
+
+            cd KernelSU
+
+            echo ""
+            echo "Remote:"
+            git remote -v || true
+
+            echo ""
+            echo "Commit:"
+            git rev-parse HEAD || true
+
+            echo ""
+            echo "Tag:"
+            git describe --tags --always || true
+
+            echo ""
+            echo "Exact tag:"
+            git describe --tags --exact-match 2>/dev/null || true
+
+            cd ..
+
+          else
+
+            echo "[!] KernelSU directory not found."
+
           fi
-
-          cd KernelSU
-
-          echo ""
-          echo "Remote:"
-          git remote -v || true
-
-          echo ""
-          echo "Current commit:"
-          git rev-parse HEAD || true
-
-          echo ""
-          echo "Current tag:"
-          git describe --tags --always || true
-
-          echo ""
-          echo "Exact tag:"
-          git describe --tags --exact-match 2>/dev/null || true
-
-          cd ..
 
           echo ""
           echo "Expected:"
           echo "${KSU_VERSION}"
 
           echo ""
-          echo "UAPI header:"
+          echo "UAPI:"
 
           if [ -f "KernelSU/uapi/supercall.h" ]; then
+
             grep \
               -n \
               "KERNEL_SU_UAPI_VERSION" \
               KernelSU/uapi/supercall.h || true
+
           else
-            echo "supercall.h not found."
+
+            echo "UAPI header not found."
+
           fi
 
           echo ""
-          echo "KernelSU config:"
+          echo "Kernel config:"
 
           if [ -f "out/.config" ]; then
+
             grep \
               -n \
               "^CONFIG_KSU" \
               out/.config || true
+
           else
+
             echo "out/.config not found."
+
           fi
 
       # =========================================================
-      # 12. VERIFY IMAGE
+      # IMAGE CHECK
       # =========================================================
 
       - name: Verify Kernel Image
@@ -521,19 +505,19 @@ jobs:
         shell: bash
         run: |
           echo "=================================================="
-          echo "KERNEL IMAGE VERIFICATION"
+          echo "KERNEL IMAGE"
           echo "=================================================="
 
           IMAGE="${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
 
           if [ -f "${IMAGE}" ]; then
 
-            echo "[OK] Image generated."
+            echo "[OK] Image exists."
 
             ls -lh "${IMAGE}"
 
             echo ""
-            echo "File:"
+            echo "File type:"
             file "${IMAGE}"
 
             echo ""
@@ -542,12 +526,12 @@ jobs:
 
           else
 
-            echo "[ERROR] Image was not generated."
+            echo "[!] Image does not exist."
 
           fi
 
       # =========================================================
-      # 13. VERIFY MODULES
+      # MODULE CHECK
       # =========================================================
 
       - name: Verify Kernel Modules
@@ -555,32 +539,19 @@ jobs:
         shell: bash
         run: |
           echo "=================================================="
-          echo "KERNEL MODULE VERIFICATION"
+          echo "KERNEL MODULES"
           echo "=================================================="
 
           if [ -d "out" ]; then
 
-            MODULE_COUNT="$(
+            COUNT="$(
               find out \
                 -type f \
                 -name "*.ko" \
                 | wc -l
             )"
 
-            echo "Module count: ${MODULE_COUNT}"
-
-            if [ "${MODULE_COUNT}" -gt 0 ]; then
-
-              find out \
-                -type f \
-                -name "*.ko" \
-                | sort
-
-            else
-
-              echo "No .ko modules found."
-
-            fi
+            echo "Module count: ${COUNT}"
 
           else
 
@@ -589,7 +560,7 @@ jobs:
           fi
 
       # =========================================================
-      # 14. VERIFY DTBS
+      # DTB CHECK
       # =========================================================
 
       - name: Verify DTBs
@@ -597,14 +568,14 @@ jobs:
         shell: bash
         run: |
           echo "=================================================="
-          echo "DTB / DTBO VERIFICATION"
+          echo "DTB / DTBO"
           echo "=================================================="
 
           DTB_DIR="out/arch/arm64/boot/dts"
 
           if [ -d "${DTB_DIR}" ]; then
 
-            DTB_COUNT="$(
+            COUNT="$(
               find "${DTB_DIR}" \
                 -type f \
                 \( \
@@ -615,16 +586,7 @@ jobs:
                 | wc -l
             )"
 
-            echo "DTB/DTBO count: ${DTB_COUNT}"
-
-            find "${DTB_DIR}" \
-              -type f \
-              \( \
-                -name "*.dtb" \
-                -o \
-                -name "*.dtbo" \
-              \) \
-              | sort
+            echo "DTB/DTBO count: ${COUNT}"
 
           else
 
@@ -633,10 +595,10 @@ jobs:
           fi
 
       # =========================================================
-      # 15. LIST OUTPUT
+      # ARTIFACT LIST
       # =========================================================
 
-      - name: List Build Artifacts
+      - name: List Artifacts
         if: always()
         shell: bash
         run: |
@@ -652,15 +614,15 @@ jobs:
 
           else
 
-            echo "output_artifacts does not exist."
+            echo "output_artifacts directory does not exist."
 
           fi
 
       # =========================================================
-      # 16. UPLOAD FINAL ARTIFACT
+      # UPLOAD SUCCESS ARTIFACT
       # =========================================================
 
-      - name: Upload Kernel Artifact
+      - name: Upload Kernel
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -672,10 +634,10 @@ jobs:
           retention-days: 7
 
       # =========================================================
-      # 17. UPLOAD DEBUG ARTIFACT WHEN BUILD FAILS
+      # UPLOAD DEBUG
       # =========================================================
 
-      - name: Upload Build Debug Files
+      - name: Upload Debug Output
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -684,7 +646,6 @@ jobs:
             ${{ github.workspace }}/out/.config
             ${{ github.workspace }}/out/Module.symvers
             ${{ github.workspace }}/out/System.map
-            ${{ github.workspace }}/out/.version
             ${{ github.workspace }}/output_artifacts/**
           if-no-files-found: ignore
           compression-level: 6
