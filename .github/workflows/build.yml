@@ -1,4 +1,4 @@
-name: Build Kernel - Backslash KernelSU v3.3.0-30
+name: Build Kernel - Backslash KernelSU v3.3.0-39
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
 
       DEFCONFIG: a3core_eur_open_defconfig
 
-      KSU_VERSION: v3.3.0-30
+      KSU_VERSION: v3.3.0-39
 
       TOOLCHAIN_DIR: ${{ github.workspace }}/toolchain_download
       CLANG_DIR: ${{ github.workspace }}/toolchain_download/clang-r383902b
@@ -284,13 +284,6 @@ jobs:
           echo "=================================================="
           echo "CONFIGURING TOOLCHAIN"
           echo "=================================================="
-
-          # -----------------------------------------------------
-          # IMPORTANT:
-          # Export PATH immediately in THIS shell.
-          # Do not rely only on GITHUB_PATH because that affects
-          # subsequent steps, not the current process.
-          # -----------------------------------------------------
 
           export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
 
@@ -626,7 +619,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: KernelSU-v3.3.0-30-Sprd
+          name: KernelSU-v3.3.0-39-Sprd
           path: |
             ${{ github.workspace }}/output_artifacts/**
           if-no-files-found: error
