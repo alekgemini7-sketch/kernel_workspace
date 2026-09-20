@@ -57,7 +57,7 @@ jobs:
           sudo ln -sf /bin/bash /bin/sh
 
           echo "Shell:"
-          bash --version | head -n 2
+          bash --version | head -n 2 || true
 
       # ============================================================
       # CACHE APT
@@ -133,27 +133,27 @@ jobs:
           echo "=================================================="
 
           echo "GCC:"
-          gcc --version | head -n 1
+          gcc --version | head -n 1 || true
 
           echo ""
           echo "G++:"
-          g++ --version | head -n 1
+          g++ --version | head -n 1 || true
 
           echo ""
           echo "System Clang:"
-          clang --version | head -n 1
+          clang --version | head -n 1 || true
 
           echo ""
           echo "System LLD:"
-          ld.lld --version | head -n 1
+          ld.lld --version | head -n 1 || true
 
           echo ""
           echo "GNU LD:"
-          ld --version | head -n 1
+          ld --version | head -n 1 || true
 
           echo ""
           echo "MAKE:"
-          make --version | head -n 1
+          make --version | head -n 1 || true
 
       # ============================================================
       # CLEAN SOURCE TREE
@@ -338,17 +338,17 @@ jobs:
           echo "KERNEL TOOLCHAIN"
           echo "=================================================="
 
-          "${CLANG_DIR}/bin/clang" --version | head -n 1
-          "${CLANG_DIR}/bin/ld.lld" --version | head -n 1
+          "${CLANG_DIR}/bin/clang" --version | head -n 1 || true
+          "${CLANG_DIR}/bin/ld.lld" --version | head -n 1 || true
 
           echo ""
           echo "=================================================="
           echo "HOST TOOLCHAIN"
           echo "=================================================="
 
-          /usr/bin/gcc --version | head -n 1
-          /usr/bin/g++ --version | head -n 1
-          /usr/bin/ld --version | head -n 1
+          /usr/bin/gcc --version | head -n 1 || true
+          /usr/bin/g++ --version | head -n 1 || true
+          /usr/bin/ld --version | head -n 1 || true
 
       # ============================================================
       # TOOLCHAIN VERIFICATION
@@ -383,19 +383,19 @@ jobs:
 
           echo ""
           echo "Kernel compiler:"
-          "${CC}" --version | head -n 1
+          "${CC}" --version | head -n 1 || true
 
           echo ""
           echo "Kernel linker:"
-          "${LD}" --version | head -n 1
+          "${LD}" --version | head -n 1 || true
 
           echo ""
           echo "Host compiler:"
-          "${HOSTCC}" --version | head -n 1
+          "${HOSTCC}" --version | head -n 1 || true
 
           echo ""
           echo "Host linker:"
-          "${HOSTLD}" --version | head -n 1
+          "${HOSTLD}" --version | head -n 1 || true
 
           # Make absolutely sure the old clang-11 executable
           # is not selected for HOSTCC.
@@ -453,7 +453,7 @@ jobs:
             -maxdepth 2 \
             -type f \
             | sort \
-            | head -n 100
+            | head -n 100 || true
 
           # Never allow generated config state in source tree.
           rm -f "${GITHUB_WORKSPACE}/.config"
