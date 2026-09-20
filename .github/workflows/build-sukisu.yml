@@ -710,66 +710,35 @@ jobs:
       # ============================================================
       # BUILD IMAGE
       # ============================================================
-      - name: Build Kernel Image
+      - name: Build kernel
         shell: bash
         run: |
           set -euxo pipefail
 
-          cd "${GITHUB_WORKSPACE}"
+          export KBUILD_BUILD_HOST="$(. /etc/os-release && echo ${NAME}-${VERSION_ID})"
+          export KBUILD_BUILD_TIMESTAMP="$(date -u -R)"
 
-          echo "=================================================="
-          echo "BUILD KERNEL IMAGE"
-          echo "=================================================="
+          # 1. Trik hapus YAML dari DTC (Bawaan workflow kamu)
+          sed -i '/yamltree.o/d' scripts/dtc/Makefile || true
+          sed -i '/dt_to_yaml/d' scripts/dtc/dtc.c || true
 
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
-          rm -rf "${GITHUB_WORKSPACE}/include/config"
-
+          # 2. Fix error 'multiple definition' DTC pada compiler Ubuntu 22.04
+          find scripts/dtc -type f -name "dtc-lexer.lex.c_shipped" -exec sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' {} + || true
           export HOST_EXTRACFLAGS="-fcommon"
-          export HOSTLDLIBS_dtc="-lyaml"
-          export HOSTLOADLIBS_dtc="-lyaml"
 
-          make \
-            -C "${GITHUB_WORKSPACE}" \
-            O="${GITHUB_WORKSPACE}/out" \
-            -j"$(nproc)" \
-            ARCH="${ARCH}" \
-            CC="${CC}" \
-            LD="${LD}" \
-            AR="${AR}" \
-            NM="${NM}" \
-            OBJCOPY="${OBJCOPY}" \
-            OBJDUMP="${OBJDUMP}" \
-            STRIP="${STRIP}" \
-            READELF="${READELF}" \
-            HOSTCC=/usr/bin/gcc \
-            HOSTCXX=/usr/bin/g++ \
-            HOSTLD=/usr/bin/ld \
-            HOSTAR=/usr/bin/ar \
-            HOSTAS=/usr/bin/as \
-            HOSTNM=/usr/bin/nm \
-            HOSTOBJCOPY=/usr/bin/objcopy \
-            HOSTOBJDUMP=/usr/bin/objdump \
-            HOSTSTRIP=/usr/bin/strip \
+          # 3. Eksekusi Build dengan tambahan LLVM=1 dan LD=ld.lld
+          make -C "$KERNEL_ROOT" O="$KERNEL_ROOT/out" -j"$(nproc)" \
+            ARCH="$ARCH" \
+            CC="clang" \
+            LD="ld.lld" \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE="${CROSS_COMPILE}" \
-            CLANG_TRIPLE="${CLANG_TRIPLE}" \
-            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
-            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
             Image
 
-          if [ ! -f "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image" ]; then
-            echo "[ERROR] Image missing."
-            exit 1
-          fi
-
-          echo ""
-          echo "[OK] Image generated."
-
-          ls -lh \
-            "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
-
+          test -s "$KERNEL_ROOT/out/arch/arm64/boot/Image"
+          ls -lh "$KERNEL_ROOT/out/arch/arm64/boot/Image"
       # ============================================================
       # BUILD MODULES
       # ============================================================
