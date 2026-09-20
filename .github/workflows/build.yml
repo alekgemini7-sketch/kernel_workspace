@@ -1,4 +1,4 @@
-name: Build Kernel - Backslash KernelSU v3.3.0-39
+name: Build SukiSU Ultra - SharkL3
 
 on:
   workflow_dispatch:
@@ -7,372 +7,36 @@ permissions:
   contents: read
 
 jobs:
-  kernel-build:
-    name: Build ARM64 Kernel
+  build-sukisu:
+
     runs-on: ubuntu-22.04
-
-    env:
-      ARCH: arm64
-      SUBARCH: arm64
-
-      BSP_BUILD_FAMILY: sharkl3
-      BSP_BUILD_ANDROID_OS: y
-
-      DEFCONFIG: a3core_eur_open_defconfig
-
-      KSU_VERSION: v3.3.0-39
-
-      TOOLCHAIN_DIR: ${{ github.workspace }}/toolchain_download
-      CLANG_DIR: ${{ github.workspace }}/toolchain_download/clang-r383902b
-      GCC_DIR: ${{ github.workspace }}/toolchain_download/gcc-14.3
 
     steps:
 
-      # =========================================================
+      # ============================================================
       # CHECKOUT
-      # =========================================================
-
-      - name: Checkout Kernel Source
+      # ============================================================
+      - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-          submodules: false
+          fetch-depth: 0
 
-      # =========================================================
-      # SYSTEM INFO
-      # =========================================================
-
-      - name: System Information
+      # ============================================================
+      # BASIC INFORMATION
+      # ============================================================
+      - name: Source Information
         shell: bash
         run: |
-          set -e
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
 
           echo "=================================================="
-          echo "SYSTEM INFORMATION"
+          echo "SOURCE INFORMATION"
           echo "=================================================="
 
-          echo ""
-          echo "OS:"
-          cat /etc/os-release
-
-          echo ""
-          echo "CPU:"
-          nproc
-
-          echo ""
-          echo "Memory:"
-          free -h
-
-          echo ""
-          echo "Disk:"
-          df -h .
-
-      # =========================================================
-      # DEPENDENCIES
-      # =========================================================
-
-      - name: Install Build Dependencies
-        shell: bash
-        run: |
-          set -e
-
-          sudo apt-get update
-
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential \
-            bc \
-            bison \
-            flex \
-            libssl-dev \
-            libelf-dev \
-            libyaml-dev \
-            libncurses-dev \
-            pkg-config \
-            device-tree-compiler \
-            libc++-dev \
-            libc++abi-dev \
-            python3 \
-            python3-minimal \
-            python-is-python3 \
-            git \
-            zip \
-            unzip \
-            curl \
-            wget \
-            cpio \
-            tar \
-            gzip \
-            xz-utils \
-            rsync \
-            file \
-            ca-certificates \
-            gcc-aarch64-linux-gnu \
-            binutils-aarch64-linux-gnu \
-            ccache
-
-          echo ""
-          echo "=================================================="
-          echo "DEPENDENCIES INSTALLED"
-          echo "=================================================="
-
-          echo ""
-          echo "System GCC:"
-          gcc --version
-
-          echo ""
-          echo "System Clang:"
-          clang --version
-
-          echo ""
-          echo "System Make:"
-          make --version
-
-          echo ""
-          echo "System Git:"
-          git --version
-
-      # =========================================================
-      # LIBYAML
-      # =========================================================
-
-      - name: Verify LibYAML
-        shell: bash
-        run: |
-          set -e
-
-          echo "=================================================="
-          echo "LIBYAML CHECK"
-          echo "=================================================="
-
-          pkg-config --cflags yaml-0.1
-          pkg-config --libs yaml-0.1
-
-          cat > /tmp/test_yaml.c <<'EOF'
-          #include <yaml.h>
-
-          int main(void)
-          {
-              yaml_emitter_t emitter;
-
-              if (!yaml_emitter_initialize(&emitter))
-                  return 1;
-
-              yaml_emitter_delete(&emitter);
-
-              return 0;
-          }
-          EOF
-
-          gcc \
-            /tmp/test_yaml.c \
-            -lyaml \
-            -o /tmp/test_yaml
-
-          /tmp/test_yaml
-
-          rm -f /tmp/test_yaml.c
-          rm -f /tmp/test_yaml
-
-          echo "[OK] LibYAML works."
-
-      # =========================================================
-      # CACHE TOOLCHAIN
-      # =========================================================
-
-      - name: Restore Toolchain Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/toolchain_download
-          key: kernel-toolchain-clang-r383902b-gcc14-v5
-          restore-keys: |
-            kernel-toolchain-
-
-      # =========================================================
-      # DOWNLOAD TOOLCHAIN
-      # =========================================================
-
-      - name: Setup Toolchains
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p "${CLANG_DIR}"
-          mkdir -p "${GCC_DIR}"
-
-          # =====================================================
-          # CLANG R383902B
-          # =====================================================
-
-          if [ ! -x "${CLANG_DIR}/bin/clang" ]; then
-
-            echo "=================================================="
-            echo "DOWNLOADING CLANG R383902B"
-            echo "=================================================="
-
-            rm -rf "${CLANG_DIR}"
-
-            mkdir -p "${CLANG_DIR}"
-
-            wget \
-              --retry-connrefused \
-              --tries=5 \
-              --timeout=60 \
-              --progress=dot:giga \
-              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz" \
-              -O /tmp/clang-r383902b.tar.gz
-
-            tar \
-              -xzf /tmp/clang-r383902b.tar.gz \
-              -C "${CLANG_DIR}"
-
-            rm -f /tmp/clang-r383902b.tar.gz
-
-          else
-
-            echo "[OK] Clang r383902b already cached."
-
-          fi
-
-          # =====================================================
-          # GCC 14.3
-          # =====================================================
-
-          if [ ! -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc" ]; then
-
-            echo "=================================================="
-            echo "DOWNLOADING ARM GCC 14.3"
-            echo "=================================================="
-
-            rm -rf "${GCC_DIR}"
-
-            mkdir -p "${GCC_DIR}"
-
-            wget \
-              --retry-connrefused \
-              --tries=5 \
-              --timeout=60 \
-              --progress=dot:giga \
-              "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
-              -O /tmp/gcc-14.3.tar.xz
-
-            tar \
-              -xJf /tmp/gcc-14.3.tar.xz \
-              -C "${GCC_DIR}" \
-              --strip-components=1
-
-            rm -f /tmp/gcc-14.3.tar.xz
-
-          else
-
-            echo "[OK] GCC 14.3 already cached."
-
-          fi
-
-      # =========================================================
-      # TOOLCHAIN PATH
-      # =========================================================
-
-      - name: Configure Toolchain
-        shell: bash
-        run: |
-          set -e
-
-          CLANG_BIN="${CLANG_DIR}/bin"
-          GCC_BIN="${GCC_DIR}/bin"
-
-          echo "=================================================="
-          echo "CONFIGURING TOOLCHAIN"
-          echo "=================================================="
-
-          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
-
-          echo "PATH=${PATH}" >> "${GITHUB_ENV}"
-
-          echo "ARCH=arm64" >> "${GITHUB_ENV}"
-          echo "SUBARCH=arm64" >> "${GITHUB_ENV}"
-
-          echo "CC=clang" >> "${GITHUB_ENV}"
-          echo "LD=ld.lld" >> "${GITHUB_ENV}"
-          echo "AR=llvm-ar" >> "${GITHUB_ENV}"
-          echo "NM=llvm-nm" >> "${GITHUB_ENV}"
-
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> "${GITHUB_ENV}"
-
-          echo "CROSS_COMPILE=${GCC_BIN}/aarch64-none-linux-gnu-" >> "${GITHUB_ENV}"
-
-          if [ -x "${GCC_BIN}/arm-none-linux-gnueabihf-gcc" ]; then
-            echo "CROSS_COMPILE_ARM32=${GCC_BIN}/arm-none-linux-gnueabihf-" >> "${GITHUB_ENV}"
-          else
-            echo "CROSS_COMPILE_ARM32=arm-linux-gnueabihf-" >> "${GITHUB_ENV}"
-          fi
-
-          echo "BSP_BUILD_FAMILY=sharkl3" >> "${GITHUB_ENV}"
-          echo "BSP_BUILD_ANDROID_OS=y" >> "${GITHUB_ENV}"
-
-          echo ""
-          echo "CLANG_BIN=${CLANG_BIN}"
-          echo "GCC_BIN=${GCC_BIN}"
-
-          echo ""
-          echo "PATH:"
-          printf '%s\n' "${PATH}"
-
-      # =========================================================
-      # VERIFY TOOLCHAIN
-      # =========================================================
-
-      - name: Verify Selected Toolchain
-        shell: bash
-        run: |
-          set -e
-
-          echo "=================================================="
-          echo "VERIFYING SELECTED TOOLCHAIN"
-          echo "=================================================="
-
-          echo ""
-          echo "clang:"
-          command -v clang
-          clang --version
-
-          echo ""
-          echo "ld.lld:"
-          command -v ld.lld
-          ld.lld --version
-
-          echo ""
-          echo "llvm-ar:"
-          command -v llvm-ar
-          llvm-ar --version
-
-          echo ""
-          echo "llvm-nm:"
-          command -v llvm-nm
-          llvm-nm --version
-
-          echo ""
-          echo "AArch64 GCC:"
-          command -v aarch64-none-linux-gnu-gcc
-          aarch64-none-linux-gnu-gcc --version
-
-          echo ""
-          echo "=================================================="
-          echo "[OK] TOOLCHAIN IS READY"
-          echo "=================================================="
-
-      # =========================================================
-      # SOURCE CHECK
-      # =========================================================
-
-      - name: Verify Kernel Source
-        shell: bash
-        run: |
-          set -e
-
-          echo "=================================================="
-          echo "KERNEL SOURCE CHECK"
-          echo "=================================================="
+          echo "Remote:"
+          git remote -v || true
 
           echo ""
           echo "Commit:"
@@ -380,266 +44,1143 @@ jobs:
 
           echo ""
           echo "Kernel version:"
+          make kernelversion || true
 
-          grep -E \
-            '^(VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION)[[:space:]]*=' \
-            Makefile
-
-          echo ""
-          echo "Defconfig:"
-
-          test -f \
-            "arch/arm64/configs/${DEFCONFIG}"
-
-          echo "${DEFCONFIG}"
-
-          echo ""
-          echo "[OK] Kernel source verified."
-
-      # =========================================================
-      # BUILD
-      # =========================================================
-
-      - name: Build Kernel
+      # ============================================================
+      # BASH
+      # ============================================================
+      - name: Setup Bash
         shell: bash
         run: |
-          set -e
+          set -euxo pipefail
 
-          chmod +x b.sh
+          sudo ln -sf /bin/bash /bin/sh
 
-          echo "=================================================="
-          echo "STARTING KERNEL BUILD"
-          echo "=================================================="
+          echo "Shell:"
+          bash --version | head -n 2
 
-          ./b.sh
+      # ============================================================
+      # CACHE APT
+      # ============================================================
+      - name: Cache APT
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: sukisu-apt-ubuntu22-v6
+          restore-keys: |
+            sukisu-apt-ubuntu22-
 
-      # =========================================================
-      # VERIFY KSU
-      # =========================================================
+      # ============================================================
+      # CACHE TOOLCHAIN
+      # ============================================================
+      - name: Cache Toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/toolchain_download
+          key: sukisu-toolchain-r383902b-gcc14-v6
+          restore-keys: |
+            sukisu-toolchain-
 
-      - name: Verify KernelSU
-        if: always()
+      # ============================================================
+      # DEPENDENCIES
+      # ============================================================
+      - name: Install Dependencies
         shell: bash
         run: |
+          set -euxo pipefail
+
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            gcc \
+            g++ \
+            make \
+            bc \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            libncurses-dev \
+            libyaml-dev \
+            pkg-config \
+            ccache \
+            python3 \
+            python3-minimal \
+            python2 \
+            git \
+            curl \
+            wget \
+            zip \
+            unzip \
+            cpio \
+            gzip \
+            bzip2 \
+            xz-utils \
+            tar \
+            rsync \
+            file \
+            device-tree-compiler \
+            libc++-dev \
+            libc++abi-dev \
+            gcc-aarch64-linux-gnu \
+            clang \
+            lld
+
           echo "=================================================="
-          echo "KERNELSU VERIFICATION"
+          echo "DEPENDENCIES INSTALLED"
           echo "=================================================="
 
-          if [ -d "KernelSU" ]; then
+          echo "GCC:"
+          gcc --version | head -n 1
 
-            cd KernelSU
+          echo ""
+          echo "G++:"
+          g++ --version | head -n 1
 
-            echo ""
-            echo "Remote:"
-            git remote -v || true
+          echo ""
+          echo "System Clang:"
+          clang --version | head -n 1
 
-            echo ""
-            echo "Commit:"
-            git rev-parse HEAD || true
+          echo ""
+          echo "System LLD:"
+          ld.lld --version | head -n 1
 
-            echo ""
-            echo "Tag:"
-            git describe --tags --always || true
+          echo ""
+          echo "GNU LD:"
+          ld --version | head -n 1
 
-            echo ""
-            echo "Exact tag:"
-            git describe --tags --exact-match 2>/dev/null || true
+          echo ""
+          echo "MAKE:"
+          make --version | head -n 1
 
-            cd ..
+      # ============================================================
+      # CLEAN SOURCE TREE
+      # ============================================================
+      - name: Clean Source Tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          echo "=================================================="
+          echo "CLEAN SOURCE TREE"
+          echo "=================================================="
+
+          rm -rf "${GITHUB_WORKSPACE}/out"
+
+          make mrproper
+
+          rm -f "${GITHUB_WORKSPACE}/.config"
+          rm -f "${GITHUB_WORKSPACE}/.config.old"
+          rm -rf "${GITHUB_WORKSPACE}/include/config"
+
+          mkdir -p "${GITHUB_WORKSPACE}/out"
+
+          echo ""
+          echo "Checking source tree..."
+
+          test ! -e "${GITHUB_WORKSPACE}/.config"
+          test ! -e "${GITHUB_WORKSPACE}/.config.old"
+          test ! -e "${GITHUB_WORKSPACE}/include/config"
+
+          echo "[OK] Source tree clean."
+
+      # ============================================================
+      # SETUP TOOLCHAIN
+      # ============================================================
+      - name: Setup Toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          ROOT="${GITHUB_WORKSPACE}"
+          TC="${ROOT}/toolchain_download"
+
+          CLANG_DIR="${TC}/clang-r383902b"
+          GCC_DIR="${TC}/gcc-14.3"
+
+          mkdir -p "${CLANG_DIR}"
+          mkdir -p "${GCC_DIR}"
+
+          # --------------------------------------------------------
+          # CLANG R383902B
+          # --------------------------------------------------------
+          if [ ! -x "${CLANG_DIR}/bin/clang" ]; then
+
+            echo "[+] Downloading Clang r383902b..."
+
+            rm -f /tmp/clang.tar.gz
+
+            wget \
+              --show-progress \
+              -O /tmp/clang.tar.gz \
+              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz"
+
+            test -s /tmp/clang.tar.gz
+
+            tar \
+              -xf /tmp/clang.tar.gz \
+              -C "${CLANG_DIR}"
+
+            rm -f /tmp/clang.tar.gz
 
           else
 
-            echo "[!] KernelSU directory not found."
+            echo "[=] Clang r383902b already cached."
 
+          fi
+
+          # --------------------------------------------------------
+          # GCC 14.3
+          # --------------------------------------------------------
+          if [ ! -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc" ]; then
+
+            echo "[+] Downloading GCC 14.3..."
+
+            rm -f /tmp/gcc.tar.xz
+
+            wget \
+              --show-progress \
+              -O /tmp/gcc.tar.xz \
+              "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
+
+            test -s /tmp/gcc.tar.xz
+
+            tar \
+              -xf /tmp/gcc.tar.xz \
+              -C "${GCC_DIR}" \
+              --strip-components=1
+
+            rm -f /tmp/gcc.tar.xz
+
+          else
+
+            echo "[=] GCC 14.3 already cached."
+
+          fi
+
+          # --------------------------------------------------------
+          # VERIFY CUSTOM TOOLCHAIN
+          # --------------------------------------------------------
+          test -x "${CLANG_DIR}/bin/clang"
+          test -x "${CLANG_DIR}/bin/ld.lld"
+          test -x "${CLANG_DIR}/bin/llvm-ar"
+          test -x "${CLANG_DIR}/bin/llvm-nm"
+          test -x "${CLANG_DIR}/bin/llvm-objcopy"
+          test -x "${CLANG_DIR}/bin/llvm-objdump"
+          test -x "${CLANG_DIR}/bin/llvm-strip"
+
+          test -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc"
+
+          # --------------------------------------------------------
+          # EXPORT PATH
+          # --------------------------------------------------------
+          echo "${CLANG_DIR}/bin" >> "${GITHUB_PATH}"
+          echo "${GCC_DIR}/bin" >> "${GITHUB_PATH}"
+
+          # --------------------------------------------------------
+          # EXPORT ENVIRONMENT
+          # --------------------------------------------------------
+          {
+            echo "ARCH=arm64"
+            echo "SUBARCH=arm64"
+
+            # Kernel compiler
+            echo "CC=${CLANG_DIR}/bin/clang"
+            echo "LD=${CLANG_DIR}/bin/ld.lld"
+            echo "AR=${CLANG_DIR}/bin/llvm-ar"
+            echo "NM=${CLANG_DIR}/bin/llvm-nm"
+            echo "OBJCOPY=${CLANG_DIR}/bin/llvm-objcopy"
+            echo "OBJDUMP=${CLANG_DIR}/bin/llvm-objdump"
+            echo "STRIP=${CLANG_DIR}/bin/llvm-strip"
+            echo "READELF=${CLANG_DIR}/bin/llvm-readelf"
+
+            # LLVM
+            echo "LLVM=1"
+            echo "LLVM_IAS=1"
+
+            # Cross compiler
+            echo "CLANG_TRIPLE=aarch64-linux-gnu-"
+            echo "CROSS_COMPILE=${GCC_DIR}/bin/aarch64-none-linux-gnu-"
+
+            # ------------------------------------------------------
+            # HOST TOOLCHAIN
+            #
+            # IMPORTANT:
+            # Kernel = Clang
+            # Host tools = GCC
+            # ------------------------------------------------------
+            echo "HOSTCC=/usr/bin/gcc"
+            echo "HOSTCXX=/usr/bin/g++"
+            echo "HOSTLD=/usr/bin/ld"
+            echo "HOSTAR=/usr/bin/ar"
+            echo "HOSTAS=/usr/bin/as"
+            echo "HOSTNM=/usr/bin/nm"
+            echo "HOSTOBJCOPY=/usr/bin/objcopy"
+            echo "HOSTOBJDUMP=/usr/bin/objdump"
+            echo "HOSTSTRIP=/usr/bin/strip"
+
+            echo "BSP_BUILD_FAMILY=sharkl3"
+            echo "BSP_BUILD_ANDROID_OS=y"
+
+            echo "DEFCONFIG=a3core_eur_open_defconfig"
+
+            echo "KBUILD_BUILD_USER=SukiSU"
+            echo "KBUILD_BUILD_HOST=SharkL3"
+            echo "KBUILD_BUILD_TIMESTAMP=$(date -u '+%a %b %d %T UTC %Y')"
+          } >> "${GITHUB_ENV}"
+
+          echo ""
+          echo "=================================================="
+          echo "KERNEL TOOLCHAIN"
+          echo "=================================================="
+
+          "${CLANG_DIR}/bin/clang" --version | head -n 1
+          "${CLANG_DIR}/bin/ld.lld" --version | head -n 1
+
+          echo ""
+          echo "=================================================="
+          echo "HOST TOOLCHAIN"
+          echo "=================================================="
+
+          /usr/bin/gcc --version | head -n 1
+          /usr/bin/g++ --version | head -n 1
+          /usr/bin/ld --version | head -n 1
+
+      # ============================================================
+      # TOOLCHAIN VERIFICATION
+      # ============================================================
+      - name: Verify Toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=================================================="
+          echo "TOOLCHAIN VERIFICATION"
+          echo "=================================================="
+
+          echo "Kernel CC:"
+          echo "${CC}"
+
+          echo ""
+          echo "Kernel LD:"
+          echo "${LD}"
+
+          echo ""
+          echo "Host CC:"
+          echo "${HOSTCC}"
+
+          echo ""
+          echo "Host CXX:"
+          echo "${HOSTCXX}"
+
+          echo ""
+          echo "Host LD:"
+          echo "${HOSTLD}"
+
+          echo ""
+          echo "Kernel compiler:"
+          "${CC}" --version | head -n 1
+
+          echo ""
+          echo "Kernel linker:"
+          "${LD}" --version | head -n 1
+
+          echo ""
+          echo "Host compiler:"
+          "${HOSTCC}" --version | head -n 1
+
+          echo ""
+          echo "Host linker:"
+          "${HOSTLD}" --version | head -n 1
+
+          # Make absolutely sure the old clang-11 executable
+          # is not selected for HOSTCC.
+          if [ "${HOSTCC}" = "clang-11" ]; then
+            echo "[ERROR] HOSTCC is still clang-11."
+            exit 1
+          fi
+
+          if [ "${HOSTCXX}" = "clang++-11" ]; then
+            echo "[ERROR] HOSTCXX is still clang++-11."
+            exit 1
           fi
 
           echo ""
-          echo "Expected:"
-          echo "${KSU_VERSION}"
+          echo "[OK] Toolchain configuration is correct."
+
+      # ============================================================
+      # INTEGRATE SUKISU ULTRA
+      # ============================================================
+      - name: Integrate SukiSU Ultra
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          echo "=================================================="
+          echo "SUKISU ULTRA INTEGRATION"
+          echo "=================================================="
+
+          if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
+
+            echo "[+] Installing SukiSU Ultra..."
+
+            curl -LSs \
+              "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+              | bash -s builtin
+
+          else
+
+            echo "[=] drivers/kernelsu already exists."
+
+          fi
+
+          if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
+            echo "[ERROR] drivers/kernelsu does not exist."
+            exit 1
+          fi
+
+          echo "[OK] drivers/kernelsu exists."
 
           echo ""
-          echo "UAPI:"
+          echo "SukiSU files:"
+          find "${GITHUB_WORKSPACE}/drivers/kernelsu" \
+            -maxdepth 2 \
+            -type f \
+            | sort \
+            | head -n 100
 
-          if [ -f "KernelSU/uapi/supercall.h" ]; then
+          # Never allow generated config state in source tree.
+          rm -f "${GITHUB_WORKSPACE}/.config"
+          rm -f "${GITHUB_WORKSPACE}/.config.old"
+          rm -rf "${GITHUB_WORKSPACE}/include/config"
 
-            grep \
-              -n \
-              "KERNEL_SU_UAPI_VERSION" \
-              KernelSU/uapi/supercall.h || true
+          echo ""
+          echo "[OK] Source generated-state cleaned."
 
-          else
+      # ============================================================
+      # SOURCE TREE GUARD
+      # ============================================================
+      - name: Source Tree Guard
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            echo "UAPI header not found."
+          cd "${GITHUB_WORKSPACE}"
 
+          echo "=================================================="
+          echo "SOURCE TREE GUARD"
+          echo "=================================================="
+
+          rm -f "${GITHUB_WORKSPACE}/.config"
+          rm -f "${GITHUB_WORKSPACE}/.config.old"
+          rm -rf "${GITHUB_WORKSPACE}/include/config"
+
+          if [ -e "${GITHUB_WORKSPACE}/.config" ]; then
+            echo "[ERROR] Source .config exists."
+            exit 1
+          fi
+
+          if [ -e "${GITHUB_WORKSPACE}/include/config" ]; then
+            echo "[ERROR] Source include/config exists."
+            exit 1
+          fi
+
+          echo "[OK] Source tree clean."
+
+      # ============================================================
+      # PREPARE DEFCONFIG
+      # ============================================================
+      - name: Prepare Defconfig
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          echo "=================================================="
+          echo "PREPARE DEFCONFIG"
+          echo "=================================================="
+
+          rm -rf "${GITHUB_WORKSPACE}/out"
+
+          mkdir -p "${GITHUB_WORKSPACE}/out"
+
+          rm -f "${GITHUB_WORKSPACE}/.config"
+          rm -f "${GITHUB_WORKSPACE}/.config.old"
+          rm -rf "${GITHUB_WORKSPACE}/include/config"
+
+          make \
+            O="${GITHUB_WORKSPACE}/out" \
+            ARCH="${ARCH}" \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            CC="${CC}" \
+            HOSTCC="${HOSTCC}" \
+            HOSTCXX="${HOSTCXX}" \
+            HOSTLD="${HOSTLD}" \
+            HOSTAR="${HOSTAR}" \
+            HOSTAS="${HOSTAS}" \
+            HOSTNM="${HOSTNM}" \
+            HOSTOBJCOPY="${HOSTOBJCOPY}" \
+            HOSTOBJDUMP="${HOSTOBJDUMP}" \
+            HOSTSTRIP="${HOSTSTRIP}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            LLVM="${LLVM}" \
+            LLVM_IAS="${LLVM_IAS}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            "${DEFCONFIG}"
+
+          test -f "${GITHUB_WORKSPACE}/out/.config"
+
+          echo ""
+          echo "[OK] out/.config generated."
+
+          if [ -f "${GITHUB_WORKSPACE}/.config" ]; then
+            echo "[ERROR] Source .config exists."
+            exit 1
+          fi
+
+          if [ -d "${GITHUB_WORKSPACE}/include/config" ]; then
+            echo "[ERROR] Source include/config exists."
+            exit 1
+          fi
+
+          echo "[OK] Source tree remains clean."
+
+      # ============================================================
+      # CONFIGURE SUKISU
+      # ============================================================
+      - name: Configure SukiSU
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          CONFIG="${GITHUB_WORKSPACE}/out/.config"
+
+          echo "=================================================="
+          echo "CONFIGURE SUKISU"
+          echo "=================================================="
+
+          # Core KSU.
+          ./scripts/config \
+            --file "${CONFIG}" \
+            --enable CONFIG_KSU
+
+          # KPROBES.
+          ./scripts/config \
+            --file "${CONFIG}" \
+            --enable CONFIG_KPROBES
+
+          # Enable KPROBE KSU hook only when supported by this tree.
+          if grep -q "KSU_KPROBES_KSUD" \
+             "${GITHUB_WORKSPACE}/drivers/kernelsu/Kconfig" \
+             2>/dev/null; then
+
+            ./scripts/config \
+              --file "${CONFIG}" \
+              --enable CONFIG_KSU_KPROBES_KSUD \
+              || true
+
+          fi
+
+          # Optional features when present.
+          if grep -q "CONFIG_KSU_LSM_SECURITY_HOOKS" "${CONFIG}"; then
+            ./scripts/config \
+              --file "${CONFIG}" \
+              --enable CONFIG_KSU_LSM_SECURITY_HOOKS \
+              || true
+          fi
+
+          if grep -q "CONFIG_KSU_FEATURE_SULOG" "${CONFIG}"; then
+            ./scripts/config \
+              --file "${CONFIG}" \
+              --enable CONFIG_KSU_FEATURE_SULOG \
+              || true
+          fi
+
+          if grep -q "CONFIG_KSU_FEATURE_ADBROOT" "${CONFIG}"; then
+            ./scripts/config \
+              --file "${CONFIG}" \
+              --enable CONFIG_KSU_FEATURE_ADBROOT \
+              || true
+          fi
+
+          # Resolve dependencies.
+          make \
+            O="${GITHUB_WORKSPACE}/out" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            HOSTCC="${HOSTCC}" \
+            HOSTCXX="${HOSTCXX}" \
+            HOSTLD="${HOSTLD}" \
+            olddefconfig
+
+          echo ""
+          echo "=================================================="
+          echo "FINAL KSU CONFIG"
+          echo "=================================================="
+
+          grep -nE \
+            "^CONFIG_KSU|^# CONFIG_KSU" \
+            "${CONFIG}" \
+            || true
+
+          echo ""
+          echo "KPROBES:"
+
+          grep -nE \
+            "^CONFIG_KPROBES|^# CONFIG_KPROBES" \
+            "${CONFIG}" \
+            || true
+
+      # ============================================================
+      # VERIFY SUKISU
+      # ============================================================
+      - name: Verify SukiSU
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="${GITHUB_WORKSPACE}/out/.config"
+
+          echo "=================================================="
+          echo "SUKISU VERIFICATION"
+          echo "=================================================="
+
+          if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
+            echo "[ERROR] drivers/kernelsu missing."
+            exit 1
+          fi
+
+          echo "[OK] drivers/kernelsu exists."
+
+          echo ""
+          echo "KSU CONFIG:"
+
+          grep -nE \
+            "^CONFIG_KSU|^# CONFIG_KSU" \
+            "${CONFIG}" \
+            || true
+
+          echo ""
+          echo "HOOK CONFIG:"
+
+          grep -nE \
+            "CONFIG_KPROBES|CONFIG_KSU_KPROBES_KSUD|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_TRACEPOINT_HOOK" \
+            "${CONFIG}" \
+            || true
+
+          if ! grep -q "^CONFIG_KSU=y$" "${CONFIG}"; then
+            echo "[ERROR] CONFIG_KSU=y is missing."
+            exit 1
+          fi
+
+          echo "[OK] CONFIG_KSU=y"
+
+          if ! grep -q "^CONFIG_KPROBES=y$" "${CONFIG}"; then
+            echo "[ERROR] CONFIG_KPROBES=y is missing."
+            exit 1
+          fi
+
+          echo "[OK] CONFIG_KPROBES=y"
+
+          echo ""
+          echo "[INFO] KPROBE hook path is used when supported."
+          echo "[INFO] CONFIG_KSU_MANUAL_HOOK is not forcibly enabled."
+
+          echo ""
+          echo "[OK] SukiSU configuration verified."
+
+      # ============================================================
+      # BUILD HOST DTC FIRST
+      # ============================================================
+      - name: Build Host DTC
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
+
+          echo "=================================================="
+          echo "BUILD HOST DTC"
+          echo "=================================================="
+
+          # Explicit host compiler.
+          export HOSTCC=/usr/bin/gcc
+          export HOSTCXX=/usr/bin/g++
+          export HOSTLD=/usr/bin/ld
+          export HOSTAR=/usr/bin/ar
+
+          # Never use clang-11 for host tools.
+          unset CFLAGS
+          unset CXXFLAGS
+          unset LDFLAGS
+
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            LD="${LD}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            scripts/dtc/dtc
+
+          if [ ! -x "${GITHUB_WORKSPACE}/out/scripts/dtc/dtc" ]; then
+            echo "[ERROR] Host DTC was not generated."
+            exit 1
           fi
 
           echo ""
-          echo "Kernel config:"
+          echo "[OK] Host DTC built."
 
-          if [ -f "out/.config" ]; then
+          file "${GITHUB_WORKSPACE}/out/scripts/dtc/dtc"
 
-            grep \
-              -n \
-              "^CONFIG_KSU" \
-              out/.config || true
-
-          else
-
-            echo "out/.config not found."
-
-          fi
-
-      # =========================================================
-      # IMAGE CHECK
-      # =========================================================
-
-      - name: Verify Kernel Image
-        if: always()
+      # ============================================================
+      # BUILD IMAGE
+      # ============================================================
+      - name: Build Kernel Image
         shell: bash
         run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
+
           echo "=================================================="
-          echo "KERNEL IMAGE"
+          echo "BUILD KERNEL IMAGE"
           echo "=================================================="
 
-          IMAGE="${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
+          rm -f "${GITHUB_WORKSPACE}/.config"
+          rm -f "${GITHUB_WORKSPACE}/.config.old"
+          rm -rf "${GITHUB_WORKSPACE}/include/config"
 
-          if [ -f "${IMAGE}" ]; then
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            -j"$(nproc)" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            READELF="${READELF}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            Image
 
-            echo "[OK] Image exists."
-
-            ls -lh "${IMAGE}"
-
-            echo ""
-            echo "File type:"
-            file "${IMAGE}"
-
-            echo ""
-            echo "SHA256:"
-            sha256sum "${IMAGE}"
-
-          else
-
-            echo "[!] Image does not exist."
-
+          if [ ! -f "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image" ]; then
+            echo "[ERROR] Image missing."
+            exit 1
           fi
 
-      # =========================================================
-      # MODULE CHECK
-      # =========================================================
+          echo ""
+          echo "[OK] Image generated."
 
-      - name: Verify Kernel Modules
-        if: always()
+          ls -lh \
+            "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
+
+      # ============================================================
+      # BUILD MODULES
+      # ============================================================
+      - name: Build Kernel Modules
         shell: bash
         run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
+
           echo "=================================================="
-          echo "KERNEL MODULES"
+          echo "BUILD MODULES"
           echo "=================================================="
 
-          if [ -d "out" ]; then
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            -j"$(nproc)" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            READELF="${READELF}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            modules
 
-            COUNT="$(
-              find out \
-                -type f \
-                -name "*.ko" \
-                | wc -l
-            )"
+          MODULE_COUNT=$(
+            find "${GITHUB_WORKSPACE}/out" \
+              -type f \
+              -name "*.ko" \
+              | wc -l
+          )
 
-            echo "Module count: ${COUNT}"
+          echo ""
+          echo "Module count: ${MODULE_COUNT}"
 
-          else
+      # ============================================================
+      # BUILD DTBS
+      # ============================================================
+      - name: Build DTBs
+        shell: bash
+        run: |
+          set -euxo pipefail
 
-            echo "out directory does not exist."
+          cd "${GITHUB_WORKSPACE}"
 
+          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
+
+          echo "=================================================="
+          echo "BUILD DTBS"
+          echo "=================================================="
+
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            -j"$(nproc)" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            READELF="${READELF}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            dtbs
+
+          DTB_COUNT=$(
+            find "${GITHUB_WORKSPACE}/out/arch/arm64/boot/dts" \
+              -type f \
+              \( -name "*.dtb" -o -name "*.dtbo" \) \
+              2>/dev/null \
+              | wc -l
+          )
+
+          echo ""
+          echo "DTB/DTBO count: ${DTB_COUNT}"
+
+      # ============================================================
+      # FINAL VERIFICATION
+      # ============================================================
+      - name: Final Verification
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUT="${GITHUB_WORKSPACE}/out"
+
+          echo "=================================================="
+          echo "FINAL BUILD VERIFICATION"
+          echo "=================================================="
+
+          # --------------------------------------------------------
+          # IMAGE
+          # --------------------------------------------------------
+          if [ ! -f "${OUT}/arch/arm64/boot/Image" ]; then
+            echo "[ERROR] Image missing."
+            exit 1
           fi
 
-      # =========================================================
-      # DTB CHECK
-      # =========================================================
+          echo "[OK] Image exists."
 
-      - name: Verify DTBs
-        if: always()
-        shell: bash
-        run: |
+          ls -lh \
+            "${OUT}/arch/arm64/boot/Image"
+
+          echo ""
+          echo "File type:"
+
+          file \
+            "${OUT}/arch/arm64/boot/Image"
+
+          echo ""
+          echo "SHA256:"
+
+          sha256sum \
+            "${OUT}/arch/arm64/boot/Image"
+
+          # --------------------------------------------------------
+          # DTB
+          # --------------------------------------------------------
+          echo ""
           echo "=================================================="
           echo "DTB / DTBO"
           echo "=================================================="
 
-          DTB_DIR="out/arch/arm64/boot/dts"
+          DTB_COUNT=$(
+            find "${OUT}/arch/arm64/boot/dts" \
+              -type f \
+              \( -name "*.dtb" -o -name "*.dtbo" \) \
+              2>/dev/null \
+              | wc -l
+          )
 
-          if [ -d "${DTB_DIR}" ]; then
+          echo "DTB/DTBO count: ${DTB_COUNT}"
 
-            COUNT="$(
-              find "${DTB_DIR}" \
-                -type f \
-                \( \
-                  -name "*.dtb" \
-                  -o \
-                  -name "*.dtbo" \
-                \) \
-                | wc -l
-            )"
+          # --------------------------------------------------------
+          # SUKISU
+          # --------------------------------------------------------
+          echo ""
+          echo "=================================================="
+          echo "SUKISU CONFIG"
+          echo "=================================================="
 
-            echo "DTB/DTBO count: ${COUNT}"
+          grep -nE \
+            "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
+            "${OUT}/.config" \
+            || true
 
+          # --------------------------------------------------------
+          # HOST DTC
+          # --------------------------------------------------------
+          echo ""
+          echo "=================================================="
+          echo "HOST DTC"
+          echo "=================================================="
+
+          if [ -x "${OUT}/scripts/dtc/dtc" ]; then
+            echo "[OK] DTC exists."
+            file "${OUT}/scripts/dtc/dtc"
           else
-
-            echo "DTB directory does not exist."
-
+            echo "[ERROR] DTC missing."
+            exit 1
           fi
 
-      # =========================================================
-      # ARTIFACT LIST
-      # =========================================================
-
-      - name: List Artifacts
-        if: always()
+      # ============================================================
+      # COLLECT ARTIFACTS
+      # ============================================================
+      - name: Collect Artifacts
         shell: bash
         run: |
-          echo "=================================================="
-          echo "OUTPUT ARTIFACTS"
-          echo "=================================================="
+          set -euo pipefail
 
-          if [ -d "output_artifacts" ]; then
+          OUT="${GITHUB_WORKSPACE}/out"
+          ART="${GITHUB_WORKSPACE}/output_artifacts"
 
-            find output_artifacts \
+          rm -rf "${ART}"
+
+          mkdir -p "${ART}"
+          mkdir -p "${ART}/dtbs"
+          mkdir -p "${ART}/modules"
+          mkdir -p "${ART}/kernelsu"
+
+          # --------------------------------------------------------
+          # IMAGE
+          # --------------------------------------------------------
+          cp \
+            "${OUT}/arch/arm64/boot/Image" \
+            "${ART}/Image"
+
+          # --------------------------------------------------------
+          # CONFIG
+          # --------------------------------------------------------
+          cp \
+            "${OUT}/.config" \
+            "${ART}/kernel.config"
+
+          # --------------------------------------------------------
+          # SYSTEM MAP
+          # --------------------------------------------------------
+          if [ -f "${OUT}/System.map" ]; then
+            cp \
+              "${OUT}/System.map" \
+              "${ART}/System.map"
+          fi
+
+          # --------------------------------------------------------
+          # MODULE SYMVERS
+          # --------------------------------------------------------
+          if [ -f "${OUT}/Module.symvers" ]; then
+            cp \
+              "${OUT}/Module.symvers" \
+              "${ART}/Module.symvers"
+          fi
+
+          # --------------------------------------------------------
+          # KERNEL RELEASE
+          # --------------------------------------------------------
+          if [ -f "${OUT}/include/config/kernel.release" ]; then
+            cp \
+              "${OUT}/include/config/kernel.release" \
+              "${ART}/kernel.release"
+          fi
+
+          # --------------------------------------------------------
+          # DTBS
+          # --------------------------------------------------------
+          if [ -d "${OUT}/arch/arm64/boot/dts" ]; then
+
+            find "${OUT}/arch/arm64/boot/dts" \
               -type f \
-              -exec ls -lh {} \;
-
-          else
-
-            echo "output_artifacts directory does not exist."
+              \( -name "*.dtb" -o -name "*.dtbo" \) \
+              -exec cp --parents {} "${ART}/dtbs/" \;
 
           fi
 
-      # =========================================================
-      # UPLOAD SUCCESS ARTIFACT
-      # =========================================================
+          # --------------------------------------------------------
+          # MODULES
+          # --------------------------------------------------------
+          find "${OUT}" \
+            -type f \
+            -name "*.ko" \
+            -print0 |
+          while IFS= read -r -d '' ko; do
 
-      - name: Upload Kernel
-        if: success()
+            rel="${ko#${OUT}/}"
+
+            mkdir -p \
+              "${ART}/modules/$(dirname "${rel}")"
+
+            cp \
+              "${ko}" \
+              "${ART}/modules/${rel}"
+
+          done
+
+          # --------------------------------------------------------
+          # KERNELSU INFO
+          # --------------------------------------------------------
+          echo "SukiSU Ultra" \
+            > "${ART}/kernelsu/version"
+
+          echo "KPROBES" \
+            > "${ART}/kernelsu/hook"
+
+          if [ -d "${GITHUB_WORKSPACE}/drivers/kernelsu/.git" ]; then
+
+            git \
+              -C "${GITHUB_WORKSPACE}/drivers/kernelsu" \
+              rev-parse HEAD \
+              > "${ART}/kernelsu/commit"
+
+          else
+
+            echo "builtin" \
+              > "${ART}/kernelsu/commit"
+
+          fi
+
+          grep -E \
+            "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
+            "${OUT}/.config" \
+            > "${ART}/kernelsu/config" \
+            || true
+
+          # --------------------------------------------------------
+          # DTB COUNT
+          # --------------------------------------------------------
+          find "${OUT}/arch/arm64/boot/dts" \
+            -type f \
+            \( -name "*.dtb" -o -name "*.dtbo" \) \
+            2>/dev/null \
+            | wc -l \
+            > "${ART}/dtb.count"
+
+          # --------------------------------------------------------
+          # SHA256
+          # --------------------------------------------------------
+          (
+            cd "${ART}"
+
+            find . \
+              -type f \
+              ! -name "SHA256SUMS" \
+              -print0 |
+            sort -z |
+            xargs -0 sha256sum \
+              > SHA256SUMS
+          )
+
+          echo ""
+          echo "=================================================="
+          echo "ARTIFACTS"
+          echo "=================================================="
+
+          find "${ART}" \
+            -type f \
+            -printf "%P\n" \
+            | sort
+
+      # ============================================================
+      # UPLOAD
+      # ============================================================
+      - name: Upload SukiSU Kernel
         uses: actions/upload-artifact@v4
         with:
-          name: KernelSU-v3.3.0-39-Sprd
-          path: |
-            ${{ github.workspace }}/output_artifacts/**
+          name: SukiSU-Ultra-SharkL3-4.14
+          path: output_artifacts/
           if-no-files-found: error
-          compression-level: 6
-          retention-days: 7
-
-      # =========================================================
-      # UPLOAD DEBUG
-      # =========================================================
-
-      - name: Upload Debug Output
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-Build-Debug
-          path: |
-            ${{ github.workspace }}/out/.config
-            ${{ github.workspace }}/out/Module.symvers
-            ${{ github.workspace }}/out/System.map
-            ${{ github.workspace }}/output_artifacts/**
-          if-no-files-found: ignore
-          compression-level: 6
-          retention-days: 7
+          retention-days: 14
