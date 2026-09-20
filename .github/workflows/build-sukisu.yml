@@ -1,0 +1,686 @@
+name: Build SukiSU Ultra - SharkL3 4.14
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-sukisu:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+      - name: Checkout Kernel
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show Kernel Source
+        run: |
+          echo "=================================================="
+          echo "KERNEL SOURCE"
+          echo "=================================================="
+
+          echo "Repository:"
+          git remote -v || true
+
+          echo ""
+          echo "Commit:"
+          git rev-parse HEAD || true
+
+          echo ""
+          echo "Branch:"
+          git branch --show-current || true
+
+          echo ""
+          echo "Kernel version:"
+          make kernelversion || true
+
+      # ============================================================
+      # SHELL
+      # ============================================================
+      - name: Force Bash
+        run: |
+          sudo ln -sf /bin/bash /bin/sh
+          bash --version | head -n 1
+
+      # ============================================================
+      # CACHE
+      # ============================================================
+      - name: Cache Toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/toolchain_download
+          key: sukisu-toolchain-ubuntu22-clang-r383902b-gcc14-v1
+          restore-keys: |
+            sukisu-toolchain-ubuntu22-
+
+      - name: Cache APT
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+          key: sukisu-apt-ubuntu22-v1
+          restore-keys: |
+            sukisu-apt-ubuntu22-
+
+      # ============================================================
+      # DEPENDENCIES
+      # ============================================================
+      - name: Install Dependencies
+        run: |
+          set -eux
+
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            bc \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            libncurses-dev \
+            libyaml-dev \
+            pkg-config \
+            ccache \
+            python3 \
+            python3-minimal \
+            python2 \
+            git \
+            curl \
+            wget \
+            zip \
+            unzip \
+            cpio \
+            gzip \
+            bzip2 \
+            xz-utils \
+            tar \
+            rsync \
+            file \
+            device-tree-compiler \
+            gcc-aarch64-linux-gnu \
+            libc6-dev \
+            lld \
+            clang
+
+          echo "=================================================="
+          echo "DEPENDENCIES INSTALLED"
+          echo "=================================================="
+
+          gcc --version | head -n 1
+          clang --version | head -n 1
+          ld.lld --version | head -n 1
+          make --version | head -n 1
+
+      # ============================================================
+      # TOOLCHAIN
+      # ============================================================
+      - name: Setup Toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          ROOT="${GITHUB_WORKSPACE}"
+          TC="${ROOT}/toolchain_download"
+
+          mkdir -p "${TC}/clang-r383902b"
+          mkdir -p "${TC}/gcc-14.3"
+
+          # --------------------------------------------------------
+          # Clang r383902b
+          # --------------------------------------------------------
+          if [ ! -x "${TC}/clang-r383902b/bin/clang" ]; then
+            echo "[+] Downloading Clang r383902b..."
+
+            wget -q --show-progress \
+              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz" \
+              -O /tmp/clang-r383902b.tar.gz
+
+            tar -xf /tmp/clang-r383902b.tar.gz \
+              -C "${TC}/clang-r383902b"
+
+            rm -f /tmp/clang-r383902b.tar.gz
+          else
+            echo "[=] Clang already cached."
+          fi
+
+          # --------------------------------------------------------
+          # GCC 14.3
+          # --------------------------------------------------------
+          if [ ! -x "${TC}/gcc-14.3/bin/aarch64-none-linux-gnu-gcc" ]; then
+            echo "[+] Downloading ARM GNU Toolchain 14.3..."
+
+            wget -q --show-progress \
+              "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz" \
+              -O /tmp/gcc-14.3.tar.xz
+
+            tar -xf /tmp/gcc-14.3.tar.xz \
+              -C "${TC}/gcc-14.3" \
+              --strip-components=1
+
+            rm -f /tmp/gcc-14.3.tar.xz
+          else
+            echo "[=] GCC 14.3 already cached."
+          fi
+
+          # --------------------------------------------------------
+          # Environment
+          # --------------------------------------------------------
+          CLANG_BIN="${TC}/clang-r383902b/bin"
+          GCC_BIN="${TC}/gcc-14.3/bin"
+
+          echo "${CLANG_BIN}" >> "${GITHUB_PATH}"
+          echo "${GCC_BIN}" >> "${GITHUB_PATH}"
+
+          {
+            echo "ARCH=arm64"
+            echo "SUBARCH=arm64"
+
+            echo "CC=${CLANG_BIN}/clang"
+            echo "HOSTCC=${CLANG_BIN}/clang"
+
+            echo "LD=${CLANG_BIN}/ld.lld"
+            echo "AR=${CLANG_BIN}/llvm-ar"
+            echo "NM=${CLANG_BIN}/llvm-nm"
+            echo "OBJCOPY=${CLANG_BIN}/llvm-objcopy"
+            echo "OBJDUMP=${CLANG_BIN}/llvm-objdump"
+            echo "STRIP=${CLANG_BIN}/llvm-strip"
+            echo "READELF=${CLANG_BIN}/llvm-readelf"
+            echo "LLVM=${CLANG_BIN}/"
+
+            echo "CLANG_TRIPLE=aarch64-linux-gnu-"
+
+            echo "CROSS_COMPILE=${GCC_BIN}/aarch64-none-linux-gnu-"
+            echo "CROSS_COMPILE_ARM32=${GCC_BIN}/arm-none-linux-gnueabihf-"
+
+            echo "BSP_BUILD_FAMILY=sharkl3"
+            echo "BSP_BUILD_ANDROID_OS=y"
+
+            echo "DEFCONFIG=a3core_eur_open_defconfig"
+
+            echo "KBUILD_BUILD_USER=SukiSU"
+            echo "KBUILD_BUILD_HOST=SharkL3"
+
+            echo "KBUILD_BUILD_TIMESTAMP=$(date -u '+%a %b %d %T UTC %Y')"
+          } >> "${GITHUB_ENV}"
+
+          echo "=================================================="
+          echo "TOOLCHAIN"
+          echo "=================================================="
+
+          "${CLANG_BIN}/clang" --version
+          "${CLANG_BIN}/ld.lld" --version
+          "${GCC_BIN}/aarch64-none-linux-gnu-gcc" --version | head -n 1
+
+          echo ""
+          echo "clang:"
+          command -v clang
+
+          echo "ld.lld:"
+          command -v ld.lld
+
+      # ============================================================
+      # INTEGRATE SUKISU ULTRA
+      # ============================================================
+      - name: Integrate SukiSU Ultra Builtin
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          echo "=================================================="
+          echo "SUKISU ULTRA INTEGRATION"
+          echo "=================================================="
+
+          # Non-GKI / builtin branch.
+          curl -LSs \
+            "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+            | bash -s builtin
+
+          echo ""
+          echo "KernelSU/SukiSU tree:"
+          find drivers -maxdepth 2 -type d -iname '*kernel*' -o -iname '*ksu*' 2>/dev/null | sort || true
+
+          echo ""
+          echo "KernelSU files:"
+          find drivers -maxdepth 3 -type f \
+            \( -name 'Kconfig' -o -name 'Makefile' -o -name '*ksu*' \) \
+            2>/dev/null | sort | head -n 100 || true
+
+      # ============================================================
+      # PREPARE DEFCONFIG
+      # ============================================================
+      - name: Prepare Defconfig
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          rm -rf out
+          mkdir -p out
+
+          make \
+            O="${GITHUB_WORKSPACE}/out" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            LD="${LD}" \
+            HOSTCC="${HOSTCC}" \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            "${DEFCONFIG}"
+
+      # ============================================================
+      # CONFIGURE SUKISU
+      # ============================================================
+      - name: Configure SukiSU
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          CONFIG="${GITHUB_WORKSPACE}/out/.config"
+
+          echo "=================================================="
+          echo "CONFIG BEFORE SUKISU"
+          echo "=================================================="
+
+          grep -E \
+            'CONFIG_KSU|CONFIG_KPROBES|CONFIG_KALLSYMS' \
+            "${CONFIG}" || true
+
+          # --------------------------------------------------------
+          # Non-GKI hook
+          #
+          # SukiSU documentation states that non-GKI kernels
+          # should use the manual hook path.
+          # --------------------------------------------------------
+          ./scripts/config --enable CONFIG_KSU
+
+          if grep -q '^CONFIG_KSU_MANUAL_HOOK=' "${CONFIG}"; then
+            ./scripts/config --enable CONFIG_KSU_MANUAL_HOOK
+          else
+            ./scripts/config --set-val CONFIG_KSU_MANUAL_HOOK y
+          fi
+
+          # KPROBE hook is NOT selected as the integration method.
+          ./scripts/config --disable CONFIG_KSU_KPROBES_KSUD || true
+
+          # Keep existing LSM integration if the tree supports it.
+          if grep -q 'CONFIG_KSU_LSM_SECURITY_HOOKS' "${CONFIG}"; then
+            ./scripts/config --enable CONFIG_KSU_LSM_SECURITY_HOOKS || true
+          fi
+
+          # Keep existing ADBROOT if present.
+          if grep -q 'CONFIG_KSU_FEATURE_ADBROOT' "${CONFIG}"; then
+            ./scripts/config --enable CONFIG_KSU_FEATURE_ADBROOT || true
+          fi
+
+          # Keep SULOG if present.
+          if grep -q 'CONFIG_KSU_FEATURE_SULOG' "${CONFIG}"; then
+            ./scripts/config --enable CONFIG_KSU_FEATURE_SULOG || true
+          fi
+
+          # --------------------------------------------------------
+          # Do NOT enable KPM/SUSFS in first SukiSU build.
+          # --------------------------------------------------------
+          ./scripts/config --disable CONFIG_KPM || true
+          ./scripts/config --disable CONFIG_KSU_SUSFS || true
+          ./scripts/config --disable CONFIG_KSU_TRACEPOINT_HOOK || true
+
+          # Resolve dependencies.
+          make \
+            O="${GITHUB_WORKSPACE}/out" \
+            ARCH="${ARCH}" \
+            olddefconfig
+
+          echo ""
+          echo "=================================================="
+          echo "SUKISU CONFIG AFTER CONFIGURATION"
+          echo "=================================================="
+
+          grep -E \
+            'CONFIG_KSU|CONFIG_KPROBES|CONFIG_KALLSYMS' \
+            "${CONFIG}" || true
+
+      # ============================================================
+      # VERIFY SOURCE / CONFIG
+      # ============================================================
+      - name: Verify SukiSU Configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG="${GITHUB_WORKSPACE}/out/.config"
+
+          echo "=================================================="
+          echo "SUKISU VERIFICATION"
+          echo "=================================================="
+
+          test -d "${GITHUB_WORKSPACE}/drivers/kernelsu"
+
+          echo "[OK] drivers/kernelsu exists."
+
+          echo ""
+          echo "KSU CONFIG:"
+          grep -nE \
+            '^CONFIG_KSU|^# CONFIG_KSU' \
+            "${CONFIG}" || true
+
+          echo ""
+          echo "HOOK CONFIG:"
+          grep -nE \
+            'CONFIG_KPROBES|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_TRACEPOINT_HOOK' \
+            "${CONFIG}" || true
+
+          # Built-in/non-GKI target.
+          if ! grep -q '^CONFIG_KSU=y$' "${CONFIG}"; then
+            echo "[ERROR] CONFIG_KSU=y is missing."
+            exit 1
+          fi
+
+          if ! grep -q '^CONFIG_KSU_MANUAL_HOOK=y$' "${CONFIG}"; then
+            echo "[ERROR] CONFIG_KSU_MANUAL_HOOK=y is missing."
+            exit 1
+          fi
+
+          if grep -q '^CONFIG_KPM=y$' "${CONFIG}"; then
+            echo "[ERROR] KPM unexpectedly enabled."
+            exit 1
+          fi
+
+          if grep -q '^CONFIG_KSU_SUSFS=y$' "${CONFIG}"; then
+            echo "[ERROR] SUSFS unexpectedly enabled."
+            exit 1
+          fi
+
+          echo ""
+          echo "[OK] SukiSU baseline configuration verified."
+
+      # ============================================================
+      # BUILD
+      # ============================================================
+      - name: Build Kernel
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          export PATH="${GITHUB_WORKSPACE}/toolchain_download/clang-r383902b/bin:${GITHUB_WORKSPACE}/toolchain_download/gcc-14.3/bin:${PATH}"
+
+          export KCFLAGS="-march=armv8.2-a+crypto -mtune=cortex-a55 -fno-semantic-interposition"
+
+          # Don't inject aggressive linker flags.
+          # Keep this build as close as possible to the known-working
+          # kernel configuration.
+          unset KBUILD_LDFLAGS || true
+
+          echo "=================================================="
+          echo "BUILD KERNEL"
+          echo "=================================================="
+
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            -j"$(nproc)" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            HOSTCC="${HOSTCC}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            READELF="${READELF}" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            KCFLAGS="${KCFLAGS}" \
+            Image
+
+      # ============================================================
+      # BUILD MODULES
+      # ============================================================
+      - name: Build Kernel Modules
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            -j"$(nproc)" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            HOSTCC="${HOSTCC}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            READELF="${READELF}" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            modules
+
+      # ============================================================
+      # BUILD DTBS
+      # ============================================================
+      - name: Build DTBs
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            -j"$(nproc)" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            HOSTCC="${HOSTCC}" \
+            LD="${LD}" \
+            AR="${AR}" \
+            NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" \
+            STRIP="${STRIP}" \
+            READELF="${READELF}" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
+            CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
+            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            dtbs || true
+
+      # ============================================================
+      # VERIFY IMAGE
+      # ============================================================
+      - name: Verify Build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUT="${GITHUB_WORKSPACE}/out"
+
+          echo "=================================================="
+          echo "BUILD RESULT"
+          echo "=================================================="
+
+          if [ ! -f "${OUT}/arch/arm64/boot/Image" ]; then
+            echo "[ERROR] Image was not generated."
+            exit 1
+          fi
+
+          echo "[OK] Image exists."
+          ls -lh "${OUT}/arch/arm64/boot/Image"
+
+          echo ""
+          echo "File type:"
+          file "${OUT}/arch/arm64/boot/Image"
+
+          echo ""
+          echo "SHA256:"
+          sha256sum "${OUT}/arch/arm64/boot/Image"
+
+          echo ""
+          echo "Kernel release:"
+          cat "${OUT}/include/config/kernel.release" 2>/dev/null || true
+
+          echo ""
+          echo "DTB/DTBO count:"
+          find "${OUT}/arch/arm64/boot/dts" \
+            -type f \
+            \( -name '*.dtb' -o -name '*.dtbo' \) \
+            2>/dev/null | wc -l
+
+          echo ""
+          echo "SukiSU config:"
+          grep -E \
+            '^CONFIG_KSU=|^CONFIG_KSU_MANUAL_HOOK=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_SUSFS=|^CONFIG_KPM=' \
+            "${OUT}/.config" || true
+
+      # ============================================================
+      # COLLECT ARTIFACT
+      # ============================================================
+      - name: Collect Artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUT="${GITHUB_WORKSPACE}/out"
+          ART="${GITHUB_WORKSPACE}/output_artifacts"
+
+          rm -rf "${ART}"
+          mkdir -p "${ART}"
+          mkdir -p "${ART}/dtbs"
+          mkdir -p "${ART}/modules"
+          mkdir -p "${ART}/sukisu"
+
+          # --------------------------------------------------------
+          # Image
+          # --------------------------------------------------------
+          cp "${OUT}/arch/arm64/boot/Image" \
+            "${ART}/Image"
+
+          # --------------------------------------------------------
+          # Config
+          # --------------------------------------------------------
+          cp "${OUT}/.config" \
+            "${ART}/kernel.config"
+
+          # --------------------------------------------------------
+          # System.map
+          # --------------------------------------------------------
+          if [ -f "${OUT}/System.map" ]; then
+            cp "${OUT}/System.map" "${ART}/System.map"
+          fi
+
+          # --------------------------------------------------------
+          # Module.symvers
+          # --------------------------------------------------------
+          if [ -f "${OUT}/Module.symvers" ]; then
+            cp "${OUT}/Module.symvers" "${ART}/Module.symvers"
+          fi
+
+          # --------------------------------------------------------
+          # Kernel release
+          # --------------------------------------------------------
+          if [ -f "${OUT}/include/config/kernel.release" ]; then
+            cp "${OUT}/include/config/kernel.release" \
+              "${ART}/kernel.release"
+          fi
+
+          # --------------------------------------------------------
+          # DTB / DTBO
+          # --------------------------------------------------------
+          if [ -d "${OUT}/arch/arm64/boot/dts" ]; then
+            find "${OUT}/arch/arm64/boot/dts" \
+              -type f \
+              \( -name '*.dtb' -o -name '*.dtbo' \) \
+              -exec cp --parents {} "${ART}/dtbs/" \;
+          fi
+
+          # --------------------------------------------------------
+          # Modules
+          # --------------------------------------------------------
+          find "${OUT}" \
+            -type f \
+            -name '*.ko' \
+            -print0 |
+          while IFS= read -r -d '' ko; do
+            rel="${ko#${OUT}/}"
+            mkdir -p "${ART}/modules/$(dirname "${rel}")"
+            cp "${ko}" "${ART}/modules/${rel}"
+          done
+
+          # --------------------------------------------------------
+          # SukiSU source information
+          # --------------------------------------------------------
+          KSU_DIR="${GITHUB_WORKSPACE}/drivers/kernelsu"
+
+          if [ -d "${KSU_DIR}/.git" ]; then
+            git -C "${KSU_DIR}" rev-parse HEAD \
+              > "${ART}/sukisu/commit"
+          else
+            echo "builtin" \
+              > "${ART}/sukisu/integration"
+          fi
+
+          echo "SukiSU Ultra builtin" \
+            > "${ART}/sukisu/version"
+
+          echo "non-GKI / manual-hook build" \
+            > "${ART}/sukisu/hook"
+
+          grep -E \
+            '^CONFIG_KSU=|^CONFIG_KSU_MANUAL_HOOK=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_SUSFS=|^CONFIG_KPM=' \
+            "${OUT}/.config" \
+            > "${ART}/sukisu/config" || true
+
+          # --------------------------------------------------------
+          # SHA256
+          # --------------------------------------------------------
+          (
+            cd "${ART}"
+            find . -type f \
+              ! -name 'SHA256SUMS' \
+              -print0 |
+            sort -z |
+            xargs -0 sha256sum \
+              > SHA256SUMS
+          )
+
+          echo ""
+          echo "=================================================="
+          echo "ARTIFACTS"
+          echo "=================================================="
+
+          find "${ART}" -type f -printf '%P\n' | sort
+
+      # ============================================================
+      # UPLOAD
+      # ============================================================
+      - name: Upload SukiSU Kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: SukiSU-Ultra-4.14-SharkL3
+          path: output_artifacts/
+          if-no-files-found: error
+          retention-days: 14
