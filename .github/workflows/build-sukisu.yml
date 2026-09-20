@@ -727,18 +727,19 @@ jobs:
           export HOST_EXTRACFLAGS="-fcommon"
 
           # 3. Eksekusi Build dengan tambahan LLVM=1 dan LD=ld.lld
-          make -C "$KERNEL_ROOT" O="$KERNEL_ROOT/out" -j"$(nproc)" \
-            ARCH="$ARCH" \
+          # Menggunakan ${GITHUB_WORKSPACE} bawaan GitHub Actions agar terhindar dari unbound variable
+          make -C "${GITHUB_WORKSPACE}" O="${GITHUB_WORKSPACE}/out" -j"$(nproc)" \
+            ARCH="${ARCH:-arm64}" \
             CC="clang" \
             LD="ld.lld" \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE="$CROSS_COMPILE" \
-            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32" \
+            CROSS_COMPILE="${CROSS_COMPILE}" \
+            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32:-}" \
             Image
 
-          test -s "$KERNEL_ROOT/out/arch/arm64/boot/Image"
-          ls -lh "$KERNEL_ROOT/out/arch/arm64/boot/Image"
+          test -s "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
+          ls -lh "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
       # ============================================================
       # BUILD MODULES
       # ============================================================
