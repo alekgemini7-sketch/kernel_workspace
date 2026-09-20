@@ -701,57 +701,6 @@ jobs:
           echo "[OK] SukiSU configuration verified."
 
       # ============================================================
-      # BUILD HOST DTC FIRST
-      # ============================================================
-      - name: Build Host DTC
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          cd "${GITHUB_WORKSPACE}"
-
-          echo "=================================================="
-          echo "BUILD HOST DTC"
-          echo "=================================================="
-
-          # Explicit host compiler.
-          export HOSTCC=/usr/bin/gcc
-          export HOSTCXX=/usr/bin/g++
-          export HOSTLD=/usr/bin/ld
-          export HOSTAR=/usr/bin/ar
-
-          unset CFLAGS
-          unset CXXFLAGS
-          unset LDFLAGS
-
-          make \
-            -C "${GITHUB_WORKSPACE}" \
-            O="${GITHUB_WORKSPACE}/out" \
-            ARCH="${ARCH}" \
-            CC="${CC}" \
-            LD="${LD}" \
-            HOSTCC=/usr/bin/gcc \
-            HOSTCXX=/usr/bin/g++ \
-            HOSTLD=/usr/bin/ld \
-            HOSTAR=/usr/bin/ar \
-            HOSTAS=/usr/bin/as \
-            HOSTNM=/usr/bin/nm \
-            HOSTOBJCOPY=/usr/bin/objcopy \
-            HOSTOBJDUMP=/usr/bin/objdump \
-            HOSTSTRIP=/usr/bin/strip \
-            scripts/dtc/dtc
-
-          if [ ! -x "${GITHUB_WORKSPACE}/out/scripts/dtc/dtc" ]; then
-            echo "[ERROR] Host DTC was not generated."
-            exit 1
-          fi
-
-          echo ""
-          echo "[OK] Host DTC built."
-
-          file "${GITHUB_WORKSPACE}/out/scripts/dtc/dtc"
-
-      # ============================================================
       # BUILD IMAGE
       # ============================================================
       - name: Build Kernel Image
@@ -988,22 +937,6 @@ jobs:
             "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
             "${OUT}/.config" \
             || true
-
-          # --------------------------------------------------------
-          # HOST DTC
-          # --------------------------------------------------------
-          echo ""
-          echo "=================================================="
-          echo "HOST DTC"
-          echo "=================================================="
-
-          if [ -x "${OUT}/scripts/dtc/dtc" ]; then
-            echo "[OK] DTC exists."
-            file "${OUT}/scripts/dtc/dtc"
-          else
-            echo "[ERROR] DTC missing."
-            exit 1
-          fi
 
       # ============================================================
       # COLLECT ARTIFACTS
