@@ -133,27 +133,27 @@ jobs:
           echo "=================================================="
 
           echo "GCC:"
-          gcc --version | head -n 1 || true
+          gcc --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "G++:"
-          g++ --version | head -n 1 || true
+          g++ --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "System Clang:"
-          clang --version | head -n 1 || true
+          clang --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "System LLD:"
-          ld.lld --version | head -n 1 || true
+          ld.lld --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "GNU LD:"
-          ld --version | head -n 1 || true
+          ld --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "MAKE:"
-          make --version | head -n 1 || true
+          make --version 2>/dev/null | head -n 1 || true
 
       # ============================================================
       # CLEAN SOURCE TREE
@@ -338,17 +338,17 @@ jobs:
           echo "KERNEL TOOLCHAIN"
           echo "=================================================="
 
-          "${CLANG_DIR}/bin/clang" --version | head -n 1 || true
-          "${CLANG_DIR}/bin/ld.lld" --version | head -n 1 || true
+          "${CLANG_DIR}/bin/clang" --version 2>/dev/null | head -n 1 || true
+          "${CLANG_DIR}/bin/ld.lld" --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "=================================================="
           echo "HOST TOOLCHAIN"
           echo "=================================================="
 
-          /usr/bin/gcc --version | head -n 1 || true
-          /usr/bin/g++ --version | head -n 1 || true
-          /usr/bin/ld --version | head -n 1 || true
+          /usr/bin/gcc --version 2>/dev/null | head -n 1 || true
+          /usr/bin/g++ --version 2>/dev/null | head -n 1 || true
+          /usr/bin/ld --version 2>/dev/null | head -n 1 || true
 
       # ============================================================
       # TOOLCHAIN VERIFICATION
@@ -383,22 +383,20 @@ jobs:
 
           echo ""
           echo "Kernel compiler:"
-          "${CC}" --version | head -n 1 || true
+          "${CC}" --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "Kernel linker:"
-          "${LD}" --version | head -n 1 || true
+          "${LD}" --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "Host compiler:"
-          "${HOSTCC}" --version | head -n 1 || true
+          "${HOSTCC}" --version 2>/dev/null | head -n 1 || true
 
           echo ""
           echo "Host linker:"
-          "${HOSTLD}" --version | head -n 1 || true
+          "${HOSTLD}" --version 2>/dev/null | head -n 1 || true
 
-          # Make absolutely sure the old clang-11 executable
-          # is not selected for HOSTCC.
           if [ "${HOSTCC}" = "clang-11" ]; then
             echo "[ERROR] HOSTCC is still clang-11."
             exit 1
@@ -585,7 +583,6 @@ jobs:
             --file "${CONFIG}" \
             --enable CONFIG_KPROBES
 
-          # Enable KPROBE KSU hook only when supported by this tree.
           if grep -q "KSU_KPROBES_KSUD" \
              "${GITHUB_WORKSPACE}/drivers/kernelsu/Kconfig" \
              2>/dev/null; then
@@ -597,7 +594,6 @@ jobs:
 
           fi
 
-          # Optional features when present.
           if grep -q "CONFIG_KSU_LSM_SECURITY_HOOKS" "${CONFIG}"; then
             ./scripts/config \
               --file "${CONFIG}" \
@@ -619,7 +615,6 @@ jobs:
               || true
           fi
 
-          # Resolve dependencies.
           make \
             O="${GITHUB_WORKSPACE}/out" \
             ARCH="${ARCH}" \
@@ -715,8 +710,6 @@ jobs:
 
           cd "${GITHUB_WORKSPACE}"
 
-          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
-
           echo "=================================================="
           echo "BUILD HOST DTC"
           echo "=================================================="
@@ -727,7 +720,6 @@ jobs:
           export HOSTLD=/usr/bin/ld
           export HOSTAR=/usr/bin/ar
 
-          # Never use clang-11 for host tools.
           unset CFLAGS
           unset CXXFLAGS
           unset LDFLAGS
@@ -768,8 +760,6 @@ jobs:
           set -euxo pipefail
 
           cd "${GITHUB_WORKSPACE}"
-
-          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
 
           echo "=================================================="
           echo "BUILD KERNEL IMAGE"
@@ -830,8 +820,6 @@ jobs:
 
           cd "${GITHUB_WORKSPACE}"
 
-          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
-
           echo "=================================================="
           echo "BUILD MODULES"
           echo "=================================================="
@@ -885,8 +873,6 @@ jobs:
           set -euxo pipefail
 
           cd "${GITHUB_WORKSPACE}"
-
-          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
 
           echo "=================================================="
           echo "BUILD DTBS"
