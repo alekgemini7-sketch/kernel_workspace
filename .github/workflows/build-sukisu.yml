@@ -28,20 +28,16 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           cd "${GITHUB_WORKSPACE}"
-
+          
           echo "=================================================="
           echo "SOURCE INFORMATION"
           echo "=================================================="
-
           echo "Remote:"
           git remote -v || true
-
           echo ""
           echo "Commit:"
           git rev-parse HEAD
-
           echo ""
           echo "Kernel version:"
           make kernelversion || true
@@ -53,14 +49,12 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           sudo ln -sf /bin/bash /bin/sh
-
           echo "Shell:"
           bash --version | head -n 2 || true
 
       # ============================================================
-      # CACHE APT
+      # CACHE APT & TOOLCHAIN
       # ============================================================
       - name: Cache APT
         uses: actions/cache@v4
@@ -70,9 +64,6 @@ jobs:
           restore-keys: |
             sukisu-apt-ubuntu22-
 
-      # ============================================================
-      # CACHE TOOLCHAIN
-      # ============================================================
       - name: Cache Toolchains
         uses: actions/cache@v4
         with:
@@ -89,107 +80,32 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           sudo apt-get update
-
           sudo apt-get install -y \
-            build-essential \
-            gcc \
-            g++ \
-            make \
-            bc \
-            bison \
-            flex \
-            libssl-dev \
-            libelf-dev \
-            libncurses-dev \
-            libyaml-dev \
-            pkg-config \
-            ccache \
-            python3 \
-            python3-minimal \
-            python2 \
-            git \
-            curl \
-            wget \
-            zip \
-            unzip \
-            cpio \
-            gzip \
-            bzip2 \
-            xz-utils \
-            tar \
-            rsync \
-            file \
-            device-tree-compiler \
-            libc++-dev \
-            libc++abi-dev \
-            gcc-aarch64-linux-gnu \
-            clang \
-            lld
-
-          echo "=================================================="
-          echo "DEPENDENCIES INSTALLED"
-          echo "=================================================="
-
-          echo "GCC:"
-          gcc --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "G++:"
-          g++ --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "System Clang:"
-          clang --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "System LLD:"
-          ld.lld --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "GNU LD:"
-          ld --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "MAKE:"
-          make --version 2>/dev/null | head -n 1 || true
+            build-essential gcc g++ make bc bison flex libssl-dev \
+            libelf-dev libncurses-dev libyaml-dev pkg-config ccache \
+            python3 python3-minimal python2 git curl wget zip unzip \
+            cpio gzip bzip2 xz-utils tar rsync file \
+            device-tree-compiler libc++-dev libc++abi-dev \
+            gcc-aarch64-linux-gnu clang lld
 
       # ============================================================
-      # CLEAN SOURCE TREE & PATCH DTC
+      # CLEAN SOURCE TREE & PATCH DTC UBUNTU 22.04
       # ============================================================
-      - name: Clean Source Tree
+      - name: Clean Source Tree & Patch
         shell: bash
         run: |
           set -euxo pipefail
-
           cd "${GITHUB_WORKSPACE}"
 
-          echo "=================================================="
-          echo "CLEAN SOURCE TREE & PATCH"
-          echo "=================================================="
-
           rm -rf "${GITHUB_WORKSPACE}/out"
-
           make mrproper
-
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
+          rm -f "${GITHUB_WORKSPACE}/.config" "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
-
           mkdir -p "${GITHUB_WORKSPACE}/out"
 
           # Fix dtc compile error on GCC 10+ (multiple definition of yylloc)
           find scripts/dtc -type f -name "dtc-lexer.lex.c_shipped" -exec sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' {} + || true
-
-          echo ""
-          echo "Checking source tree..."
-
-          test ! -e "${GITHUB_WORKSPACE}/.config"
-          test ! -e "${GITHUB_WORKSPACE}/.config.old"
-          test ! -e "${GITHUB_WORKSPACE}/include/config"
-
-          echo "[OK] Source tree clean and patched."
 
       # ============================================================
       # SETUP TOOLCHAIN
@@ -198,100 +114,36 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           ROOT="${GITHUB_WORKSPACE}"
           TC="${ROOT}/toolchain_download"
-
           CLANG_DIR="${TC}/clang-r383902b"
           GCC_DIR="${TC}/gcc-14.3"
 
-          mkdir -p "${CLANG_DIR}"
-          mkdir -p "${GCC_DIR}"
+          mkdir -p "${CLANG_DIR}" "${GCC_DIR}"
 
-          # --------------------------------------------------------
-          # CLANG R383902B
-          # --------------------------------------------------------
+          # DOWNLOAD CLANG R383902B
           if [ ! -x "${CLANG_DIR}/bin/clang" ]; then
-
-            echo "[+] Downloading Clang r383902b..."
-
             rm -f /tmp/clang.tar.gz
-
-            wget \
-              --show-progress \
-              -O /tmp/clang.tar.gz \
-              "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz"
-
-            test -s /tmp/clang.tar.gz
-
-            tar \
-              -xf /tmp/clang.tar.gz \
-              -C "${CLANG_DIR}"
-
+            wget -q --show-progress -O /tmp/clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/0e9e7035bf8ad42437c6156e5950eab13655b26c/clang-r383902b.tar.gz"
+            tar -xf /tmp/clang.tar.gz -C "${CLANG_DIR}"
             rm -f /tmp/clang.tar.gz
-
-          else
-
-            echo "[=] Clang r383902b already cached."
-
           fi
 
-          # --------------------------------------------------------
-          # GCC 14.3
-          # --------------------------------------------------------
+          # DOWNLOAD GCC 14.3
           if [ ! -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc" ]; then
-
-            echo "[+] Downloading GCC 14.3..."
-
             rm -f /tmp/gcc.tar.xz
-
-            wget \
-              --show-progress \
-              -O /tmp/gcc.tar.xz \
-              "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
-
-            test -s /tmp/gcc.tar.xz
-
-            tar \
-              -xf /tmp/gcc.tar.xz \
-              -C "${GCC_DIR}" \
-              --strip-components=1
-
+            wget -q --show-progress -O /tmp/gcc.tar.xz "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
+            tar -xf /tmp/gcc.tar.xz -C "${GCC_DIR}" --strip-components=1
             rm -f /tmp/gcc.tar.xz
-
-          else
-
-            echo "[=] GCC 14.3 already cached."
-
           fi
 
-          # --------------------------------------------------------
-          # VERIFY CUSTOM TOOLCHAIN
-          # --------------------------------------------------------
-          test -x "${CLANG_DIR}/bin/clang"
-          test -x "${CLANG_DIR}/bin/ld.lld"
-          test -x "${CLANG_DIR}/bin/llvm-ar"
-          test -x "${CLANG_DIR}/bin/llvm-nm"
-          test -x "${CLANG_DIR}/bin/llvm-objcopy"
-          test -x "${CLANG_DIR}/bin/llvm-objdump"
-          test -x "${CLANG_DIR}/bin/llvm-strip"
-
-          test -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc"
-
-          # --------------------------------------------------------
-          # EXPORT PATH
-          # --------------------------------------------------------
           echo "${CLANG_DIR}/bin" >> "${GITHUB_PATH}"
           echo "${GCC_DIR}/bin" >> "${GITHUB_PATH}"
 
-          # --------------------------------------------------------
-          # EXPORT ENVIRONMENT
-          # --------------------------------------------------------
+          # EXPORT ENVIRONMENT VARS
           {
             echo "ARCH=arm64"
             echo "SUBARCH=arm64"
-
-            # Kernel compiler
             echo "CC=${CLANG_DIR}/bin/clang"
             echo "LD=${CLANG_DIR}/bin/ld.lld"
             echo "AR=${CLANG_DIR}/bin/llvm-ar"
@@ -300,18 +152,10 @@ jobs:
             echo "OBJDUMP=${CLANG_DIR}/bin/llvm-objdump"
             echo "STRIP=${CLANG_DIR}/bin/llvm-strip"
             echo "READELF=${CLANG_DIR}/bin/llvm-readelf"
-
-            # LLVM
             echo "LLVM=1"
             echo "LLVM_IAS=1"
-
-            # Cross compiler
             echo "CLANG_TRIPLE=aarch64-linux-gnu-"
             echo "CROSS_COMPILE=${GCC_DIR}/bin/aarch64-none-linux-gnu-"
-
-            # ------------------------------------------------------
-            # HOST TOOLCHAIN
-            # ------------------------------------------------------
             echo "HOSTCC=/usr/bin/gcc"
             echo "HOSTCXX=/usr/bin/g++"
             echo "HOSTLD=/usr/bin/ld"
@@ -321,93 +165,13 @@ jobs:
             echo "HOSTOBJCOPY=/usr/bin/objcopy"
             echo "HOSTOBJDUMP=/usr/bin/objdump"
             echo "HOSTSTRIP=/usr/bin/strip"
-            
             echo "BSP_BUILD_FAMILY=sharkl3"
             echo "BSP_BUILD_ANDROID_OS=y"
-
             echo "DEFCONFIG=a3core_eur_open_defconfig"
-
             echo "KBUILD_BUILD_USER=SukiSU"
             echo "KBUILD_BUILD_HOST=SharkL3"
             echo "KBUILD_BUILD_TIMESTAMP=$(date -u '+%a %b %d %T UTC %Y')"
           } >> "${GITHUB_ENV}"
-
-          echo ""
-          echo "=================================================="
-          echo "KERNEL TOOLCHAIN"
-          echo "=================================================="
-
-          "${CLANG_DIR}/bin/clang" --version 2>/dev/null | head -n 1 || true
-          "${CLANG_DIR}/bin/ld.lld" --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "=================================================="
-          echo "HOST TOOLCHAIN"
-          echo "=================================================="
-
-          /usr/bin/gcc --version 2>/dev/null | head -n 1 || true
-          /usr/bin/g++ --version 2>/dev/null | head -n 1 || true
-          /usr/bin/ld --version 2>/dev/null | head -n 1 || true
-
-      # ============================================================
-      # TOOLCHAIN VERIFICATION
-      # ============================================================
-      - name: Verify Toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "=================================================="
-          echo "TOOLCHAIN VERIFICATION"
-          echo "=================================================="
-
-          echo "Kernel CC:"
-          echo "${CC}"
-
-          echo ""
-          echo "Kernel LD:"
-          echo "${LD}"
-
-          echo ""
-          echo "Host CC:"
-          echo "${HOSTCC}"
-
-          echo ""
-          echo "Host CXX:"
-          echo "${HOSTCXX}"
-
-          echo ""
-          echo "Host LD:"
-          echo "${HOSTLD}"
-
-          echo ""
-          echo "Kernel compiler:"
-          "${CC}" --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "Kernel linker:"
-          "${LD}" --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "Host compiler:"
-          "${HOSTCC}" --version 2>/dev/null | head -n 1 || true
-
-          echo ""
-          echo "Host linker:"
-          "${HOSTLD}" --version 2>/dev/null | head -n 1 || true
-
-          if [ "${HOSTCC}" = "clang-11" ]; then
-            echo "[ERROR] HOSTCC is still clang-11."
-            exit 1
-          fi
-
-          if [ "${HOSTCXX}" = "clang++-11" ]; then
-            echo "[ERROR] HOSTCXX is still clang++-11."
-            exit 1
-          fi
-
-          echo ""
-          echo "[OK] Toolchain configuration is correct."
 
       # ============================================================
       # INTEGRATE SUKISU ULTRA
@@ -416,79 +180,16 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           cd "${GITHUB_WORKSPACE}"
 
-          echo "=================================================="
-          echo "SUKISU ULTRA INTEGRATION"
-          echo "=================================================="
-
           if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
-
-            echo "[+] Installing SukiSU Ultra..."
-
-            curl -LSs \
-              "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
-              | bash -s builtin
-
-          else
-
-            echo "[=] drivers/kernelsu already exists."
-
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
           fi
 
           if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
             echo "[ERROR] drivers/kernelsu does not exist."
             exit 1
           fi
-
-          echo "[OK] drivers/kernelsu exists."
-
-          echo ""
-          echo "SukiSU files:"
-          find "${GITHUB_WORKSPACE}/drivers/kernelsu" \
-            -maxdepth 2 \
-            -type f \
-            | sort \
-            | head -n 100 || true
-
-          # Never allow generated config state in source tree.
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
-          rm -rf "${GITHUB_WORKSPACE}/include/config"
-
-          echo ""
-          echo "[OK] Source generated-state cleaned."
-
-      # ============================================================
-      # SOURCE TREE GUARD
-      # ============================================================
-      - name: Source Tree Guard
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cd "${GITHUB_WORKSPACE}"
-
-          echo "=================================================="
-          echo "SOURCE TREE GUARD"
-          echo "=================================================="
-
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
-          rm -rf "${GITHUB_WORKSPACE}/include/config"
-
-          if [ -e "${GITHUB_WORKSPACE}/.config" ]; then
-            echo "[ERROR] Source .config exists."
-            exit 1
-          fi
-
-          if [ -e "${GITHUB_WORKSPACE}/include/config" ]; then
-            echo "[ERROR] Source include/config exists."
-            exit 1
-          fi
-
-          echo "[OK] Source tree clean."
 
       # ============================================================
       # PREPARE DEFCONFIG
@@ -497,68 +198,21 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           cd "${GITHUB_WORKSPACE}"
-
-          echo "=================================================="
-          echo "PREPARE DEFCONFIG"
-          echo "=================================================="
-
-          rm -rf "${GITHUB_WORKSPACE}/out"
-
-          mkdir -p "${GITHUB_WORKSPACE}/out"
-
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
-          rm -rf "${GITHUB_WORKSPACE}/include/config"
 
           export HOST_EXTRACFLAGS="-fcommon"
           export HOSTLDLIBS_dtc="-lyaml"
           export HOSTLOADLIBS_dtc="-lyaml"
 
-          make \
-            O="${GITHUB_WORKSPACE}/out" \
-            ARCH="${ARCH}" \
-            CROSS_COMPILE="${CROSS_COMPILE}" \
-            CLANG_TRIPLE="${CLANG_TRIPLE}" \
-            CC="${CC}" \
-            HOSTCC="${HOSTCC}" \
-            HOSTCXX="${HOSTCXX}" \
-            HOSTLD="${HOSTLD}" \
-            HOSTAR="${HOSTAR}" \
-            HOSTAS="${HOSTAS}" \
-            HOSTNM="${HOSTNM}" \
-            HOSTOBJCOPY="${HOSTOBJCOPY}" \
-            HOSTOBJDUMP="${HOSTOBJDUMP}" \
-            HOSTSTRIP="${HOSTSTRIP}" \
-            LD="${LD}" \
-            AR="${AR}" \
-            NM="${NM}" \
-            OBJCOPY="${OBJCOPY}" \
-            OBJDUMP="${OBJDUMP}" \
-            STRIP="${STRIP}" \
-            LLVM="${LLVM}" \
-            LLVM_IAS="${LLVM_IAS}" \
-            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
-            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+          make O="${GITHUB_WORKSPACE}/out" ARCH="${ARCH}" \
+            CROSS_COMPILE="${CROSS_COMPILE}" CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            CC="${CC}" HOSTCC="${HOSTCC}" HOSTCXX="${HOSTCXX}" HOSTLD="${HOSTLD}" \
+            HOSTAR="${HOSTAR}" HOSTAS="${HOSTAS}" HOSTNM="${HOSTNM}" \
+            HOSTOBJCOPY="${HOSTOBJCOPY}" HOSTOBJDUMP="${HOSTOBJDUMP}" HOSTSTRIP="${HOSTSTRIP}" \
+            LD="${LD}" AR="${AR}" NM="${NM}" OBJCOPY="${OBJCOPY}" \
+            OBJDUMP="${OBJDUMP}" STRIP="${STRIP}" LLVM="${LLVM}" LLVM_IAS="${LLVM_IAS}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
             "${DEFCONFIG}"
-
-          test -f "${GITHUB_WORKSPACE}/out/.config"
-
-          echo ""
-          echo "[OK] out/.config generated."
-
-          if [ -f "${GITHUB_WORKSPACE}/.config" ]; then
-            echo "[ERROR] Source .config exists."
-            exit 1
-          fi
-
-          if [ -d "${GITHUB_WORKSPACE}/include/config" ]; then
-            echo "[ERROR] Source include/config exists."
-            exit 1
-          fi
-
-          echo "[OK] Source tree remains clean."
 
       # ============================================================
       # CONFIGURE SUKISU
@@ -567,365 +221,58 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           cd "${GITHUB_WORKSPACE}"
-
           CONFIG="${GITHUB_WORKSPACE}/out/.config"
 
-          echo "=================================================="
-          echo "CONFIGURE SUKISU"
-          echo "=================================================="
+          ./scripts/config --file "${CONFIG}" --enable CONFIG_KSU
+          ./scripts/config --file "${CONFIG}" --enable CONFIG_KPROBES
 
-          # Core KSU.
-          ./scripts/config \
-            --file "${CONFIG}" \
-            --enable CONFIG_KSU
-
-          # KPROBES.
-          ./scripts/config \
-            --file "${CONFIG}" \
-            --enable CONFIG_KPROBES
-
-          if grep -q "KSU_KPROBES_KSUD" \
-             "${GITHUB_WORKSPACE}/drivers/kernelsu/Kconfig" \
-             2>/dev/null; then
-
-            ./scripts/config \
-              --file "${CONFIG}" \
-              --enable CONFIG_KSU_KPROBES_KSUD \
-              || true
-
+          if grep -q "KSU_KPROBES_KSUD" "${GITHUB_WORKSPACE}/drivers/kernelsu/Kconfig" 2>/dev/null; then
+            ./scripts/config --file "${CONFIG}" --enable CONFIG_KSU_KPROBES_KSUD || true
           fi
 
           if grep -q "CONFIG_KSU_LSM_SECURITY_HOOKS" "${CONFIG}"; then
-            ./scripts/config \
-              --file "${CONFIG}" \
-              --enable CONFIG_KSU_LSM_SECURITY_HOOKS \
-              || true
-          fi
-
-          if grep -q "CONFIG_KSU_FEATURE_SULOG" "${CONFIG}"; then
-            ./scripts/config \
-              --file "${CONFIG}" \
-              --enable CONFIG_KSU_FEATURE_SULOG \
-              || true
-          fi
-
-          if grep -q "CONFIG_KSU_FEATURE_ADBROOT" "${CONFIG}"; then
-            ./scripts/config \
-              --file "${CONFIG}" \
-              --enable CONFIG_KSU_FEATURE_ADBROOT \
-              || true
+            ./scripts/config --file "${CONFIG}" --enable CONFIG_KSU_LSM_SECURITY_HOOKS || true
           fi
 
           export HOST_EXTRACFLAGS="-fcommon"
           export HOSTLDLIBS_dtc="-lyaml"
           export HOSTLOADLIBS_dtc="-lyaml"
 
-          make \
-            O="${GITHUB_WORKSPACE}/out" \
-            ARCH="${ARCH}" \
-            CC="${CC}" \
-            HOSTCC="${HOSTCC}" \
-            HOSTCXX="${HOSTCXX}" \
-            HOSTLD="${HOSTLD}" \
+          make O="${GITHUB_WORKSPACE}/out" ARCH="${ARCH}" CC="${CC}" \
+            HOSTCC="${HOSTCC}" HOSTCXX="${HOSTCXX}" HOSTLD="${HOSTLD}" \
             olddefconfig
 
-          echo ""
-          echo "=================================================="
-          echo "FINAL KSU CONFIG"
-          echo "=================================================="
-
-          grep -nE \
-            "^CONFIG_KSU|^# CONFIG_KSU" \
-            "${CONFIG}" \
-            || true
-
-          echo ""
-          echo "KPROBES:"
-
-          grep -nE \
-            "^CONFIG_KPROBES|^# CONFIG_KPROBES" \
-            "${CONFIG}" \
-            || true
-
       # ============================================================
-      # VERIFY SUKISU
+      # BUILD KERNEL SEKALIGUS (IMAGE, MODULES, DTBS)
       # ============================================================
-      - name: Verify SukiSU
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          CONFIG="${GITHUB_WORKSPACE}/out/.config"
-
-          echo "=================================================="
-          echo "SUKISU VERIFICATION"
-          echo "=================================================="
-
-          if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
-            echo "[ERROR] drivers/kernelsu missing."
-            exit 1
-          fi
-
-          echo "[OK] drivers/kernelsu exists."
-
-          echo ""
-          echo "KSU CONFIG:"
-
-          grep -nE \
-            "^CONFIG_KSU|^# CONFIG_KSU" \
-            "${CONFIG}" \
-            || true
-
-          echo ""
-          echo "HOOK CONFIG:"
-
-          grep -nE \
-            "CONFIG_KPROBES|CONFIG_KSU_KPROBES_KSUD|CONFIG_KSU_MANUAL_HOOK|CONFIG_KSU_TRACEPOINT_HOOK" \
-            "${CONFIG}" \
-            || true
-
-          if ! grep -q "^CONFIG_KSU=y$" "${CONFIG}"; then
-            echo "[ERROR] CONFIG_KSU=y is missing."
-            exit 1
-          fi
-
-          echo "[OK] CONFIG_KSU=y"
-
-          if ! grep -q "^CONFIG_KPROBES=y$" "${CONFIG}"; then
-            echo "[ERROR] CONFIG_KPROBES=y is missing."
-            exit 1
-          fi
-
-          echo "[OK] CONFIG_KPROBES=y"
-
-          echo ""
-          echo "[INFO] KPROBE hook path is used when supported."
-          echo "[INFO] CONFIG_KSU_MANUAL_HOOK is not forcibly enabled."
-
-          echo ""
-          echo "[OK] SukiSU configuration verified."
-
-      # ============================================================
-      # BUILD IMAGE
-      # ============================================================
-      - name: Build kernel
+      - name: Build Kernel (Image, Modules, DTBs)
         shell: bash
         run: |
           set -euxo pipefail
+          cd "${GITHUB_WORKSPACE}"
 
-          export KBUILD_BUILD_HOST="$(. /etc/os-release && echo ${NAME}-${VERSION_ID})"
-          export KBUILD_BUILD_TIMESTAMP="$(date -u -R)"
+          # Patch Error DTBO SPRD (Typo dan -@ flag)
+          sed -i 's|arch/arm64/boot/dts/sprd/||g' arch/arm64/boot/dts/sprd/Makefile || true
+          sed -i '1s/^/DTC_FLAGS += -@\n/' arch/arm64/boot/dts/sprd/Makefile || true
 
-          # 1. Trik hapus YAML dari DTC (Bawaan workflow kamu)
-          sed -i '/yamltree.o/d' scripts/dtc/Makefile || true
-          sed -i '/dt_to_yaml/d' scripts/dtc/dtc.c || true
-
-          # 2. Fix error 'multiple definition' DTC pada compiler Ubuntu 22.04
-          find scripts/dtc -type f -name "dtc-lexer.lex.c_shipped" -exec sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' {} + || true
           export HOST_EXTRACFLAGS="-fcommon"
+          export HOSTLDLIBS_dtc="-lyaml"
+          export HOSTLOADLIBS_dtc="-lyaml"
 
-          # 3. Eksekusi Build dengan tambahan LLVM=1 dan LD=ld.lld
-          # Menggunakan ${GITHUB_WORKSPACE} bawaan GitHub Actions agar terhindar dari unbound variable
           make -C "${GITHUB_WORKSPACE}" O="${GITHUB_WORKSPACE}/out" -j"$(nproc)" \
-            ARCH="${ARCH:-arm64}" \
-            CC="clang" \
-            LD="ld.lld" \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CROSS_COMPILE="${CROSS_COMPILE}" \
-            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32:-}" \
-            Image
+            ARCH="${ARCH}" CC="${CC}" LD="${LD}" AR="${AR}" NM="${NM}" \
+            OBJCOPY="${OBJCOPY}" OBJDUMP="${OBJDUMP}" STRIP="${STRIP}" READELF="${READELF}" \
+            HOSTCC="${HOSTCC}" HOSTCXX="${HOSTCXX}" HOSTLD="${HOSTLD}" HOSTAR="${HOSTAR}" \
+            HOSTAS="${HOSTAS}" HOSTNM="${HOSTNM}" HOSTOBJCOPY="${HOSTOBJCOPY}" \
+            HOSTOBJDUMP="${HOSTOBJDUMP}" HOSTSTRIP="${HOSTSTRIP}" \
+            LLVM="${LLVM}" LLVM_IAS="${LLVM_IAS}" \
+            CROSS_COMPILE="${CROSS_COMPILE}" CLANG_TRIPLE="${CLANG_TRIPLE}" \
+            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
+            Image dtbs modules
 
-          test -s "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
-          ls -lh "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
-      # ============================================================
-      # BUILD MODULES
-      # ============================================================
-      - name: Build Kernel Modules
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          cd "${GITHUB_WORKSPACE}"
-
-          echo "=================================================="
-          echo "BUILD MODULES"
-          echo "=================================================="
-
-          export HOST_EXTRACFLAGS="-fcommon"
-          export HOSTLDLIBS_dtc="-lyaml"
-          export HOSTLOADLIBS_dtc="-lyaml"
-
-          make \
-            -C "${GITHUB_WORKSPACE}" \
-            O="${GITHUB_WORKSPACE}/out" \
-            -j"$(nproc)" \
-            ARCH="${ARCH}" \
-            CC="${CC}" \
-            LD="${LD}" \
-            AR="${AR}" \
-            NM="${NM}" \
-            OBJCOPY="${OBJCOPY}" \
-            OBJDUMP="${OBJDUMP}" \
-            STRIP="${STRIP}" \
-            READELF="${READELF}" \
-            HOSTCC=/usr/bin/gcc \
-            HOSTCXX=/usr/bin/g++ \
-            HOSTLD=/usr/bin/ld \
-            HOSTAR=/usr/bin/ar \
-            HOSTAS=/usr/bin/as \
-            HOSTNM=/usr/bin/nm \
-            HOSTOBJCOPY=/usr/bin/objcopy \
-            HOSTOBJDUMP=/usr/bin/objdump \
-            HOSTSTRIP=/usr/bin/strip \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CROSS_COMPILE="${CROSS_COMPILE}" \
-            CLANG_TRIPLE="${CLANG_TRIPLE}" \
-            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
-            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
-            modules
-
-          MODULE_COUNT=$(
-            find "${GITHUB_WORKSPACE}/out" \
-              -type f \
-              -name "*.ko" \
-              | wc -l
-          )
-
-          echo ""
-          echo "Module count: ${MODULE_COUNT}"
-
-      # ============================================================
-      # BUILD DTBS
-      # ============================================================
-      - name: Build DTBs
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          cd "${GITHUB_WORKSPACE}"
-
-          echo "=================================================="
-          echo "BUILD DTBS"
-          echo "=================================================="
-
-          export HOST_EXTRACFLAGS="-fcommon"
-          export HOSTLDLIBS_dtc="-lyaml"
-          export HOSTLOADLIBS_dtc="-lyaml"
-
-          make \
-            -C "${GITHUB_WORKSPACE}" \
-            O="${GITHUB_WORKSPACE}/out" \
-            -j"$(nproc)" \
-            ARCH="${ARCH}" \
-            CC="${CC}" \
-            LD="${LD}" \
-            AR="${AR}" \
-            NM="${NM}" \
-            OBJCOPY="${OBJCOPY}" \
-            OBJDUMP="${OBJDUMP}" \
-            STRIP="${STRIP}" \
-            READELF="${READELF}" \
-            HOSTCC=/usr/bin/gcc \
-            HOSTCXX=/usr/bin/g++ \
-            HOSTLD=/usr/bin/ld \
-            HOSTAR=/usr/bin/ar \
-            HOSTAS=/usr/bin/as \
-            HOSTNM=/usr/bin/nm \
-            HOSTOBJCOPY=/usr/bin/objcopy \
-            HOSTOBJDUMP=/usr/bin/objdump \
-            HOSTSTRIP=/usr/bin/strip \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CROSS_COMPILE="${CROSS_COMPILE}" \
-            CLANG_TRIPLE="${CLANG_TRIPLE}" \
-            BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
-            BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
-            dtbs
-
-          DTB_COUNT=$(
-            find "${GITHUB_WORKSPACE}/out/arch/arm64/boot/dts" \
-              -type f \
-              \( -name "*.dtb" -o -name "*.dtbo" \) \
-              2>/dev/null \
-              | wc -l
-          )
-
-          echo ""
-          echo "DTB/DTBO count: ${DTB_COUNT}"
-
-      # ============================================================
-      # FINAL VERIFICATION
-      # ============================================================
-      - name: Final Verification
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          OUT="${GITHUB_WORKSPACE}/out"
-
-          echo "=================================================="
-          echo "FINAL BUILD VERIFICATION"
-          echo "=================================================="
-
-          # --------------------------------------------------------
-          # IMAGE
-          # --------------------------------------------------------
-          if [ ! -f "${OUT}/arch/arm64/boot/Image" ]; then
-            echo "[ERROR] Image missing."
-            exit 1
-          fi
-
-          echo "[OK] Image exists."
-
-          ls -lh \
-            "${OUT}/arch/arm64/boot/Image"
-
-          echo ""
-          echo "File type:"
-
-          file \
-            "${OUT}/arch/arm64/boot/Image"
-
-          echo ""
-          echo "SHA256:"
-
-          sha256sum \
-            "${OUT}/arch/arm64/boot/Image"
-
-          # --------------------------------------------------------
-          # DTB
-          # --------------------------------------------------------
-          echo ""
-          echo "=================================================="
-          echo "DTB / DTBO"
-          echo "=================================================="
-
-          DTB_COUNT=$(
-            find "${OUT}/arch/arm64/boot/dts" \
-              -type f \
-              \( -name "*.dtb" -o -name "*.dtbo" \) \
-              2>/dev/null \
-              | wc -l
-          )
-
-          echo "DTB/DTBO count: ${DTB_COUNT}"
-
-          # --------------------------------------------------------
-          # SUKISU
-          # --------------------------------------------------------
-          echo ""
-          echo "=================================================="
-          echo "SUKISU CONFIG"
-          echo "=================================================="
-
-          grep -nE \
-            "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
-            "${OUT}/.config" \
-            || true
+          # Verifikasi singkat
+          ls -lh "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image" || true
 
       # ============================================================
       # COLLECT ARTIFACTS
@@ -934,153 +281,46 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           OUT="${GITHUB_WORKSPACE}/out"
           ART="${GITHUB_WORKSPACE}/output_artifacts"
 
           rm -rf "${ART}"
+          mkdir -p "${ART}/dtbs" "${ART}/modules" "${ART}/kernelsu"
 
-          mkdir -p "${ART}"
-          mkdir -p "${ART}/dtbs"
-          mkdir -p "${ART}/modules"
-          mkdir -p "${ART}/kernelsu"
+          # Copy Image & Config
+          cp "${OUT}/arch/arm64/boot/Image" "${ART}/Image"
+          cp "${OUT}/.config" "${ART}/kernel.config"
 
-          # --------------------------------------------------------
-          # IMAGE
-          # --------------------------------------------------------
-          cp \
-            "${OUT}/arch/arm64/boot/Image" \
-            "${ART}/Image"
+          [ -f "${OUT}/System.map" ] && cp "${OUT}/System.map" "${ART}/System.map"
+          [ -f "${OUT}/Module.symvers" ] && cp "${OUT}/Module.symvers" "${ART}/Module.symvers"
+          [ -f "${OUT}/include/config/kernel.release" ] && cp "${OUT}/include/config/kernel.release" "${ART}/kernel.release"
 
-          # --------------------------------------------------------
-          # CONFIG
-          # --------------------------------------------------------
-          cp \
-            "${OUT}/.config" \
-            "${ART}/kernel.config"
-
-          # --------------------------------------------------------
-          # SYSTEM MAP
-          # --------------------------------------------------------
-          if [ -f "${OUT}/System.map" ]; then
-            cp \
-              "${OUT}/System.map" \
-              "${ART}/System.map"
-          fi
-
-          # --------------------------------------------------------
-          # MODULE SYMVERS
-          # --------------------------------------------------------
-          if [ -f "${OUT}/Module.symvers" ]; then
-            cp \
-              "${OUT}/Module.symvers" \
-              "${ART}/Module.symvers"
-          fi
-
-          # --------------------------------------------------------
-          # KERNEL RELEASE
-          # --------------------------------------------------------
-          if [ -f "${OUT}/include/config/kernel.release" ]; then
-            cp \
-              "${OUT}/include/config/kernel.release" \
-              "${ART}/kernel.release"
-          fi
-
-          # --------------------------------------------------------
-          # DTBS
-          # --------------------------------------------------------
+          # Copy DTBS
           if [ -d "${OUT}/arch/arm64/boot/dts" ]; then
-
-            find "${OUT}/arch/arm64/boot/dts" \
-              -type f \
-              \( -name "*.dtb" -o -name "*.dtbo" \) \
-              -exec cp --parents {} "${ART}/dtbs/" \;
-
+            find "${OUT}/arch/arm64/boot/dts" -type f \( -name "*.dtb" -o -name "*.dtbo" \) -exec cp --parents {} "${ART}/dtbs/" \;
           fi
 
-          # --------------------------------------------------------
-          # MODULES
-          # --------------------------------------------------------
-          find "${OUT}" \
-            -type f \
-            -name "*.ko" \
-            -print0 |
-          while IFS= read -r -d '' ko; do
-
+          # Copy Modules
+          find "${OUT}" -type f -name "*.ko" -print0 | while IFS= read -r -d '' ko; do
             rel="${ko#${OUT}/}"
-
-            mkdir -p \
-              "${ART}/modules/$(dirname "${rel}")"
-
-            cp \
-              "${ko}" \
-              "${ART}/modules/${rel}"
-
+            mkdir -p "${ART}/modules/$(dirname "${rel}")"
+            cp "${ko}" "${ART}/modules/${rel}"
           done
 
-          # --------------------------------------------------------
-          # KERNELSU INFO
-          # --------------------------------------------------------
-          echo "SukiSU Ultra" \
-            > "${ART}/kernelsu/version"
-
-          echo "KPROBES" \
-            > "${ART}/kernelsu/hook"
-
+          # Info KernelSU
+          echo "SukiSU Ultra" > "${ART}/kernelsu/version"
+          echo "KPROBES" > "${ART}/kernelsu/hook"
           if [ -d "${GITHUB_WORKSPACE}/drivers/kernelsu/.git" ]; then
-
-            git \
-              -C "${GITHUB_WORKSPACE}/drivers/kernelsu" \
-              rev-parse HEAD \
-              > "${ART}/kernelsu/commit"
-
+            git -C "${GITHUB_WORKSPACE}/drivers/kernelsu" rev-parse HEAD > "${ART}/kernelsu/commit"
           else
-
-            echo "builtin" \
-              > "${ART}/kernelsu/commit"
-
+            echo "builtin" > "${ART}/kernelsu/commit"
           fi
 
-          grep -E \
-            "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
-            "${OUT}/.config" \
-            > "${ART}/kernelsu/config" \
-            || true
-
-          # --------------------------------------------------------
-          # DTB COUNT
-          # --------------------------------------------------------
-          find "${OUT}/arch/arm64/boot/dts" \
-            -type f \
-            \( -name "*.dtb" -o -name "*.dtbo" \) \
-            2>/dev/null \
-            | wc -l \
-            > "${ART}/dtb.count"
-
-          # --------------------------------------------------------
-          # SHA256
-          # --------------------------------------------------------
+          # Generate SHA256
           (
             cd "${ART}"
-
-            find . \
-              -type f \
-              ! -name "SHA256SUMS" \
-              -print0 |
-            sort -z |
-            xargs -0 sha256sum \
-              > SHA256SUMS
+            find . -type f ! -name "SHA256SUMS" -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
           )
-
-          echo ""
-          echo "=================================================="
-          echo "ARTIFACTS"
-          echo "=================================================="
-
-          find "${ART}" \
-            -type f \
-            -printf "%P\n" \
-            | sort
 
       # ============================================================
       # UPLOAD
