@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   build-sukisu:
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -20,16 +21,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Show Kernel Information
+      # ============================================================
+      # SHOW SOURCE INFORMATION
+      # ============================================================
+      - name: Kernel Source Information
         shell: bash
         run: |
           set -e
+
+          cd "${GITHUB_WORKSPACE}"
 
           echo "=================================================="
           echo "KERNEL SOURCE"
           echo "=================================================="
 
-          echo "Repository:"
+          echo "Remote:"
           git remote -v || true
 
           echo ""
@@ -65,7 +71,7 @@ jobs:
         with:
           path: |
             ${{ github.workspace }}/toolchain_download
-          key: sukisu-toolchain-ubuntu22-clang-r383902b-gcc14-v3
+          key: sukisu-toolchain-ubuntu22-clang-r383902b-gcc14-v4
           restore-keys: |
             sukisu-toolchain-ubuntu22-
 
@@ -77,7 +83,7 @@ jobs:
         with:
           path: |
             /var/cache/apt/archives
-          key: sukisu-apt-ubuntu22-v3
+          key: sukisu-apt-ubuntu22-v4
           restore-keys: |
             sukisu-apt-ubuntu22-
 
@@ -155,6 +161,33 @@ jobs:
           echo "[OK] Dependencies verified."
 
       # ============================================================
+      # CLEAN SOURCE
+      #
+      # IMPORTANT:
+      # mrproper is executed BEFORE SukiSU integration.
+      # Do NOT run mrproper after SukiSU is installed.
+      # ============================================================
+      - name: Clean Kernel Source
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          echo "=================================================="
+          echo "CLEAN KERNEL SOURCE"
+          echo "=================================================="
+
+          rm -rf "${GITHUB_WORKSPACE}/out"
+
+          make mrproper
+
+          mkdir -p "${GITHUB_WORKSPACE}/out"
+
+          echo ""
+          echo "[OK] Kernel source cleaned."
+
+      # ============================================================
       # TOOLCHAIN
       # ============================================================
       - name: Setup Toolchain
@@ -229,23 +262,26 @@ jobs:
           fi
 
           # --------------------------------------------------------
-          # VERIFY FILES
+          # VERIFY TOOLCHAIN FILES
           # --------------------------------------------------------
           test -x "${CLANG_DIR}/bin/clang"
           test -x "${CLANG_DIR}/bin/ld.lld"
           test -x "${CLANG_DIR}/bin/llvm-ar"
           test -x "${CLANG_DIR}/bin/llvm-nm"
+          test -x "${CLANG_DIR}/bin/llvm-objcopy"
+          test -x "${CLANG_DIR}/bin/llvm-objdump"
+          test -x "${CLANG_DIR}/bin/llvm-strip"
 
           test -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc"
 
           # --------------------------------------------------------
-          # GITHUB PATH
+          # PATH
           # --------------------------------------------------------
           echo "${CLANG_DIR}/bin" >> "${GITHUB_PATH}"
           echo "${GCC_DIR}/bin" >> "${GITHUB_PATH}"
 
           # --------------------------------------------------------
-          # GITHUB ENV
+          # ENVIRONMENT
           # --------------------------------------------------------
           {
             echo "ARCH=arm64"
@@ -260,6 +296,7 @@ jobs:
             echo "LD=${CLANG_DIR}/bin/ld.lld"
             echo "AR=${CLANG_DIR}/bin/llvm-ar"
             echo "NM=${CLANG_DIR}/bin/llvm-nm"
+
             echo "OBJCOPY=${CLANG_DIR}/bin/llvm-objcopy"
             echo "OBJDUMP=${CLANG_DIR}/bin/llvm-objdump"
             echo "STRIP=${CLANG_DIR}/bin/llvm-strip"
@@ -271,6 +308,7 @@ jobs:
             echo "CLANG_TRIPLE=aarch64-linux-gnu-"
 
             echo "CROSS_COMPILE=${GCC_DIR}/bin/aarch64-none-linux-gnu-"
+
             echo "CROSS_COMPILE_ARM32=${GCC_DIR}/bin/arm-none-linux-gnueabihf-"
 
             echo "BSP_BUILD_FAMILY=sharkl3"
@@ -280,13 +318,12 @@ jobs:
 
             echo "KBUILD_BUILD_USER=SukiSU"
             echo "KBUILD_BUILD_HOST=SharkL3"
-
             echo "KBUILD_BUILD_TIMESTAMP=$(date -u '+%a %b %d %T UTC %Y')"
 
           } >> "${GITHUB_ENV}"
 
           # --------------------------------------------------------
-          # VERIFY TOOLCHAIN
+          # VERIFY CUSTOM TOOLCHAIN
           # --------------------------------------------------------
           echo ""
           echo "=================================================="
@@ -310,13 +347,10 @@ jobs:
           "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc" --version
 
           echo ""
-          echo "Toolchain paths:"
-          echo "CLANG=${CLANG_DIR}/bin/clang"
-          echo "LD=${CLANG_DIR}/bin/ld.lld"
-          echo "GCC=${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc"
+          echo "[OK] Custom toolchain ready."
 
       # ============================================================
-      # VERIFY LD.LLD
+      # VERIFY LINKER
       # ============================================================
       - name: Verify Linker
         shell: bash
@@ -327,24 +361,24 @@ jobs:
           echo "LINKER VERIFICATION"
           echo "=================================================="
 
-          echo "LD variable:"
+          echo "LD:"
           echo "${LD}"
 
           if [ ! -x "${LD}" ]; then
-            echo "[ERROR] ld.lld does not exist:"
+            echo "[ERROR] ld.lld not found:"
             echo "${LD}"
             exit 1
           fi
 
           echo ""
-          echo "LD.LLD:"
+          echo "Version:"
           "${LD}" --version
 
           echo ""
           echo "[OK] ld.lld is ready."
 
       # ============================================================
-      # INTEGRATE SUKISU
+      # INTEGRATE SUKISU ULTRA
       # ============================================================
       - name: Integrate SukiSU Ultra
         shell: bash
@@ -372,14 +406,16 @@ jobs:
           fi
 
           if [ ! -d "drivers/kernelsu" ]; then
-            echo "[ERROR] drivers/kernelsu was not created."
+            echo "[ERROR] drivers/kernelsu missing."
             exit 1
           fi
 
+          echo ""
           echo "[OK] drivers/kernelsu exists."
 
           echo ""
           echo "SukiSU files:"
+
           find drivers/kernelsu \
             -maxdepth 2 \
             -type f \
@@ -394,13 +430,15 @@ jobs:
         run: |
           set -euxo pipefail
 
-          rm -rf "${GITHUB_WORKSPACE}/out"
-
-          mkdir -p "${GITHUB_WORKSPACE}/out"
+          cd "${GITHUB_WORKSPACE}"
 
           echo "=================================================="
           echo "PREPARE DEFCONFIG"
           echo "=================================================="
+
+          rm -rf "${GITHUB_WORKSPACE}/out"
+
+          mkdir -p "${GITHUB_WORKSPACE}/out"
 
           make \
             O="${GITHUB_WORKSPACE}/out" \
@@ -423,8 +461,12 @@ jobs:
             BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
             "${DEFCONFIG}"
 
-          test -f "${GITHUB_WORKSPACE}/out/.config"
+          if [ ! -f "${GITHUB_WORKSPACE}/out/.config" ]; then
+            echo "[ERROR] .config was not generated."
+            exit 1
+          fi
 
+          echo ""
           echo "[OK] Defconfig generated."
 
       # ============================================================
@@ -444,22 +486,25 @@ jobs:
           echo "=================================================="
 
           # --------------------------------------------------------
-          # CORE KSU
+          # CORE
           # --------------------------------------------------------
-          ./scripts/config --enable CONFIG_KSU
+          ./scripts/config \
+            --enable CONFIG_KSU
 
           # --------------------------------------------------------
           # KPROBES
           # --------------------------------------------------------
-          ./scripts/config --enable CONFIG_KPROBES
+          ./scripts/config \
+            --enable CONFIG_KPROBES
 
           # --------------------------------------------------------
-          # SUKISU KPROBE HOOK
+          # KSU KPROBE HOOK
           # --------------------------------------------------------
-          ./scripts/config --enable CONFIG_KSU_KPROBES_KSUD
+          ./scripts/config \
+            --enable CONFIG_KSU_KPROBES_KSUD
 
           # --------------------------------------------------------
-          # EXISTING KSU FEATURES
+          # EXISTING FEATURES
           # --------------------------------------------------------
           if grep -q "CONFIG_KSU_LSM_SECURITY_HOOKS" "${CONFIG}"; then
             ./scripts/config \
@@ -480,18 +525,17 @@ jobs:
           fi
 
           # --------------------------------------------------------
-          # DO NOT USE MANUAL_HOOK
+          # FIRST BUILD
           #
-          # The actual SukiSU tree detected in the previous build
-          # does not expose CONFIG_KSU_MANUAL_HOOK.
+          # KPM / SUSFS are intentionally not forced here.
           # --------------------------------------------------------
+          ./scripts/config \
+            --disable CONFIG_KPM \
+            || true
 
-          # --------------------------------------------------------
-          # FIRST BUILD:
-          # KPM / SUSFS OFF
-          # --------------------------------------------------------
-          ./scripts/config --disable CONFIG_KPM || true
-          ./scripts/config --disable CONFIG_KSU_SUSFS || true
+          ./scripts/config \
+            --disable CONFIG_KSU_SUSFS \
+            || true
 
           # --------------------------------------------------------
           # RESOLVE DEPENDENCIES
@@ -557,7 +601,7 @@ jobs:
             || true
 
           # --------------------------------------------------------
-          # CONFIG_KSU
+          # CORE
           # --------------------------------------------------------
           if ! grep -q "^CONFIG_KSU=y$" "${CONFIG}"; then
             echo "[ERROR] CONFIG_KSU=y is missing."
@@ -567,7 +611,7 @@ jobs:
           echo "[OK] CONFIG_KSU=y"
 
           # --------------------------------------------------------
-          # CONFIG_KPROBES
+          # KPROBES
           # --------------------------------------------------------
           if ! grep -q "^CONFIG_KPROBES=y$" "${CONFIG}"; then
             echo "[ERROR] CONFIG_KPROBES=y is missing."
@@ -577,7 +621,7 @@ jobs:
           echo "[OK] CONFIG_KPROBES=y"
 
           # --------------------------------------------------------
-          # SUKISU KPROBE HOOK
+          # KSU KPROBE HOOK
           # --------------------------------------------------------
           if ! grep -q "^CONFIG_KSU_KPROBES_KSUD=y$" "${CONFIG}"; then
             echo "[ERROR] CONFIG_KSU_KPROBES_KSUD=y is missing."
@@ -587,7 +631,7 @@ jobs:
           echo "[OK] CONFIG_KSU_KPROBES_KSUD=y"
 
           echo ""
-          echo "[INFO] CONFIG_KSU_MANUAL_HOOK is not required."
+          echo "[INFO] CONFIG_KSU_MANUAL_HOOK is not required by this tree."
 
           echo ""
           echo "[OK] SukiSU configuration verified."
@@ -599,6 +643,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
 
           export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
 
@@ -637,7 +683,11 @@ jobs:
             exit 1
           fi
 
+          echo ""
           echo "[OK] Image generated."
+
+          ls -lh \
+            "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
 
       # ============================================================
       # BUILD MODULES
@@ -646,6 +696,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
 
           export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
 
@@ -680,7 +732,9 @@ jobs:
             modules
 
           echo ""
-          echo "Module count:"
+          echo "=================================================="
+          echo "MODULE COUNT"
+          echo "=================================================="
 
           find "${GITHUB_WORKSPACE}/out" \
             -type f \
@@ -694,6 +748,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
 
           export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
 
@@ -725,7 +781,9 @@ jobs:
             dtbs
 
           echo ""
-          echo "DTB/DTBO count:"
+          echo "=================================================="
+          echo "DTB / DTBO COUNT"
+          echo "=================================================="
 
           find "${GITHUB_WORKSPACE}/out/arch/arm64/boot/dts" \
             -type f \
@@ -734,7 +792,7 @@ jobs:
             | wc -l
 
       # ============================================================
-      # VERIFY BUILD
+      # FINAL BUILD VERIFICATION
       # ============================================================
       - name: Verify Build
         shell: bash
@@ -886,14 +944,20 @@ jobs:
           done
 
           # --------------------------------------------------------
-          # SUKISU METADATA
+          # SUKISU VERSION
           # --------------------------------------------------------
           echo "SukiSU Ultra" \
             > "${ART}/sukisu/version"
 
+          # --------------------------------------------------------
+          # HOOK
+          # --------------------------------------------------------
           echo "KPROBES" \
             > "${ART}/sukisu/hook"
 
+          # --------------------------------------------------------
+          # SUKISU COMMIT
+          # --------------------------------------------------------
           if [ -d "${GITHUB_WORKSPACE}/drivers/kernelsu/.git" ]; then
 
             git \
@@ -908,6 +972,9 @@ jobs:
 
           fi
 
+          # --------------------------------------------------------
+          # SUKISU CONFIG
+          # --------------------------------------------------------
           grep -E \
             "^CONFIG_KSU=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KPROBES=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
             "${OUT}/.config" \
@@ -950,7 +1017,7 @@ jobs:
             | sort
 
       # ============================================================
-      # UPLOAD ARTIFACT
+      # UPLOAD
       # ============================================================
       - name: Upload SukiSU Kernel
         uses: actions/upload-artifact@v4
