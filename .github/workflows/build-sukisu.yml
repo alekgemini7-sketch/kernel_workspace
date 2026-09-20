@@ -1,4 +1,4 @@
-name: Build SukiSU Ultra - SharkL3 4.14
+name: Build SukiSU Ultra - SharkL3
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       # ============================================================
-      # BASIC SOURCE INFO
+      # BASIC INFORMATION
       # ============================================================
       - name: Source Information
         shell: bash
@@ -43,10 +43,6 @@ jobs:
           git rev-parse HEAD
 
           echo ""
-          echo "Branch:"
-          git branch --show-current || true
-
-          echo ""
           echo "Kernel version:"
           make kernelversion || true
 
@@ -61,28 +57,28 @@ jobs:
           sudo ln -sf /bin/bash /bin/sh
 
           echo "Shell:"
-          bash --version | head -n 2
+          bash --version | head -n 2 || true
 
       # ============================================================
-      # APT CACHE
+      # CACHE APT
       # ============================================================
       - name: Cache APT
         uses: actions/cache@v4
         with:
           path: /var/cache/apt/archives
-          key: sukisu-apt-ubuntu22-v5
+          key: sukisu-apt-ubuntu22-v6
           restore-keys: |
             sukisu-apt-ubuntu22-
 
       # ============================================================
-      # TOOLCHAIN CACHE
+      # CACHE TOOLCHAIN
       # ============================================================
       - name: Cache Toolchains
         uses: actions/cache@v4
         with:
           path: |
             ${{ github.workspace }}/toolchain_download
-          key: sukisu-toolchain-clang-r383902b-gcc14-v5
+          key: sukisu-toolchain-r383902b-gcc14-v6
           restore-keys: |
             sukisu-toolchain-
 
@@ -98,6 +94,9 @@ jobs:
 
           sudo apt-get install -y \
             build-essential \
+            gcc \
+            g++ \
+            make \
             bc \
             bison \
             flex \
@@ -123,8 +122,9 @@ jobs:
             rsync \
             file \
             device-tree-compiler \
+            libc++-dev \
+            libc++abi-dev \
             gcc-aarch64-linux-gnu \
-            libc6-dev \
             clang \
             lld
 
@@ -133,19 +133,27 @@ jobs:
           echo "=================================================="
 
           echo "GCC:"
-          gcc --version | head -n 1
+          gcc --version | head -n 1 || true
 
           echo ""
-          echo "CLANG:"
-          clang --version | head -n 1
+          echo "G++:"
+          g++ --version | head -n 1 || true
 
           echo ""
-          echo "LLD:"
-          ld.lld --version | head -n 1
+          echo "System Clang:"
+          clang --version | head -n 1 || true
+
+          echo ""
+          echo "System LLD:"
+          ld.lld --version | head -n 1 || true
+
+          echo ""
+          echo "GNU LD:"
+          ld --version | head -n 1 || true
 
           echo ""
           echo "MAKE:"
-          make --version | head -n 1
+          make --version | head -n 1 || true
 
       # ============================================================
       # CLEAN SOURCE TREE
@@ -163,11 +171,8 @@ jobs:
 
           rm -rf "${GITHUB_WORKSPACE}/out"
 
-          # Clean generated kernel files.
           make mrproper
 
-          # Explicitly remove generated configuration state
-          # from the source tree.
           rm -f "${GITHUB_WORKSPACE}/.config"
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
@@ -175,7 +180,7 @@ jobs:
           mkdir -p "${GITHUB_WORKSPACE}/out"
 
           echo ""
-          echo "Source checks:"
+          echo "Checking source tree..."
 
           test ! -e "${GITHUB_WORKSPACE}/.config"
           test ! -e "${GITHUB_WORKSPACE}/.config.old"
@@ -184,7 +189,7 @@ jobs:
           echo "[OK] Source tree clean."
 
       # ============================================================
-      # TOOLCHAIN
+      # SETUP TOOLCHAIN
       # ============================================================
       - name: Setup Toolchain
         shell: bash
@@ -224,7 +229,7 @@ jobs:
 
           else
 
-            echo "[=] Clang already cached."
+            echo "[=] Clang r383902b already cached."
 
           fi
 
@@ -258,7 +263,7 @@ jobs:
           fi
 
           # --------------------------------------------------------
-          # VERIFY
+          # VERIFY CUSTOM TOOLCHAIN
           # --------------------------------------------------------
           test -x "${CLANG_DIR}/bin/clang"
           test -x "${CLANG_DIR}/bin/ld.lld"
@@ -270,50 +275,53 @@ jobs:
 
           test -x "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc"
 
-          # ARM32 compiler may not exist in this downloaded
-          # AArch64-only toolchain. Do not fail because of it.
-          ARM32="${GCC_DIR}/bin/arm-none-linux-gnueabihf-"
-
           # --------------------------------------------------------
-          # PATH
+          # EXPORT PATH
           # --------------------------------------------------------
           echo "${CLANG_DIR}/bin" >> "${GITHUB_PATH}"
           echo "${GCC_DIR}/bin" >> "${GITHUB_PATH}"
 
           # --------------------------------------------------------
-          # ENVIRONMENT
+          # EXPORT ENVIRONMENT
           # --------------------------------------------------------
           {
             echo "ARCH=arm64"
             echo "SUBARCH=arm64"
 
-            echo "CLANG_BIN=${CLANG_DIR}/bin"
-            echo "GCC_BIN=${GCC_DIR}/bin"
-
+            # Kernel compiler
             echo "CC=${CLANG_DIR}/bin/clang"
-            echo "HOSTCC=${CLANG_DIR}/bin/clang"
-
             echo "LD=${CLANG_DIR}/bin/ld.lld"
             echo "AR=${CLANG_DIR}/bin/llvm-ar"
             echo "NM=${CLANG_DIR}/bin/llvm-nm"
-
             echo "OBJCOPY=${CLANG_DIR}/bin/llvm-objcopy"
             echo "OBJDUMP=${CLANG_DIR}/bin/llvm-objdump"
             echo "STRIP=${CLANG_DIR}/bin/llvm-strip"
             echo "READELF=${CLANG_DIR}/bin/llvm-readelf"
 
+            # LLVM
             echo "LLVM=1"
             echo "LLVM_IAS=1"
 
+            # Cross compiler
             echo "CLANG_TRIPLE=aarch64-linux-gnu-"
-
             echo "CROSS_COMPILE=${GCC_DIR}/bin/aarch64-none-linux-gnu-"
 
-            if [ -x "${GCC_DIR}/bin/arm-none-linux-gnueabihf-gcc" ]; then
-              echo "CROSS_COMPILE_ARM32=${GCC_DIR}/bin/arm-none-linux-gnueabihf-"
-            else
-              echo "CROSS_COMPILE_ARM32="
-            fi
+            # ------------------------------------------------------
+            # HOST TOOLCHAIN
+            #
+            # IMPORTANT:
+            # Kernel = Clang
+            # Host tools = GCC
+            # ------------------------------------------------------
+            echo "HOSTCC=/usr/bin/gcc"
+            echo "HOSTCXX=/usr/bin/g++"
+            echo "HOSTLD=/usr/bin/ld"
+            echo "HOSTAR=/usr/bin/ar"
+            echo "HOSTAS=/usr/bin/as"
+            echo "HOSTNM=/usr/bin/nm"
+            echo "HOSTOBJCOPY=/usr/bin/objcopy"
+            echo "HOSTOBJDUMP=/usr/bin/objdump"
+            echo "HOSTSTRIP=/usr/bin/strip"
 
             echo "BSP_BUILD_FAMILY=sharkl3"
             echo "BSP_BUILD_ANDROID_OS=y"
@@ -323,20 +331,27 @@ jobs:
             echo "KBUILD_BUILD_USER=SukiSU"
             echo "KBUILD_BUILD_HOST=SharkL3"
             echo "KBUILD_BUILD_TIMESTAMP=$(date -u '+%a %b %d %T UTC %Y')"
-
           } >> "${GITHUB_ENV}"
 
           echo ""
           echo "=================================================="
-          echo "CUSTOM TOOLCHAIN"
+          echo "KERNEL TOOLCHAIN"
           echo "=================================================="
 
-          "${CLANG_DIR}/bin/clang" --version | head -n 1
-          "${CLANG_DIR}/bin/ld.lld" --version | head -n 1
-          "${GCC_DIR}/bin/aarch64-none-linux-gnu-gcc" --version | head -n 1
+          "${CLANG_DIR}/bin/clang" --version | head -n 1 || true
+          "${CLANG_DIR}/bin/ld.lld" --version | head -n 1 || true
+
+          echo ""
+          echo "=================================================="
+          echo "HOST TOOLCHAIN"
+          echo "=================================================="
+
+          /usr/bin/gcc --version | head -n 1 || true
+          /usr/bin/g++ --version | head -n 1 || true
+          /usr/bin/ld --version | head -n 1 || true
 
       # ============================================================
-      # VERIFY TOOLCHAIN
+      # TOOLCHAIN VERIFICATION
       # ============================================================
       - name: Verify Toolchain
         shell: bash
@@ -347,23 +362,55 @@ jobs:
           echo "TOOLCHAIN VERIFICATION"
           echo "=================================================="
 
-          echo "CC=${CC}"
-          echo "LD=${LD}"
-          echo "AR=${AR}"
-          echo "NM=${NM}"
-          echo "CROSS_COMPILE=${CROSS_COMPILE}"
-
-          test -x "${CC}"
-          test -x "${LD}"
-          test -x "${AR}"
-          test -x "${NM}"
+          echo "Kernel CC:"
+          echo "${CC}"
 
           echo ""
-          echo "LD:"
-          "${LD}" --version | head -n 1
+          echo "Kernel LD:"
+          echo "${LD}"
 
           echo ""
-          echo "[OK] Toolchain ready."
+          echo "Host CC:"
+          echo "${HOSTCC}"
+
+          echo ""
+          echo "Host CXX:"
+          echo "${HOSTCXX}"
+
+          echo ""
+          echo "Host LD:"
+          echo "${HOSTLD}"
+
+          echo ""
+          echo "Kernel compiler:"
+          "${CC}" --version | head -n 1 || true
+
+          echo ""
+          echo "Kernel linker:"
+          "${LD}" --version | head -n 1 || true
+
+          echo ""
+          echo "Host compiler:"
+          "${HOSTCC}" --version | head -n 1 || true
+
+          echo ""
+          echo "Host linker:"
+          "${HOSTLD}" --version | head -n 1 || true
+
+          # Make absolutely sure the old clang-11 executable
+          # is not selected for HOSTCC.
+          if [ "${HOSTCC}" = "clang-11" ]; then
+            echo "[ERROR] HOSTCC is still clang-11."
+            exit 1
+          fi
+
+          if [ "${HOSTCXX}" = "clang++-11" ]; then
+            echo "[ERROR] HOSTCXX is still clang++-11."
+            exit 1
+          fi
+
+          echo ""
+          echo "[OK] Toolchain configuration is correct."
 
       # ============================================================
       # INTEGRATE SUKISU ULTRA
@@ -401,25 +448,20 @@ jobs:
           echo "[OK] drivers/kernelsu exists."
 
           echo ""
-          echo "SukiSU tree:"
+          echo "SukiSU files:"
           find "${GITHUB_WORKSPACE}/drivers/kernelsu" \
             -maxdepth 2 \
             -type f \
             | sort \
-            | head -n 100
+            | head -n 100 || true
 
-          # --------------------------------------------------------
-          # IMPORTANT
-          #
-          # SukiSU setup must not leave generated Kbuild state
-          # in source tree.
-          # --------------------------------------------------------
+          # Never allow generated config state in source tree.
           rm -f "${GITHUB_WORKSPACE}/.config"
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
 
           echo ""
-          echo "[OK] Source generated-state removed after SukiSU integration."
+          echo "[OK] Source generated-state cleaned."
 
       # ============================================================
       # SOURCE TREE GUARD
@@ -435,7 +477,6 @@ jobs:
           echo "SOURCE TREE GUARD"
           echo "=================================================="
 
-          # These are forbidden before an O=out build.
           rm -f "${GITHUB_WORKSPACE}/.config"
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
@@ -450,7 +491,7 @@ jobs:
             exit 1
           fi
 
-          echo "[OK] Source tree is clean for O=out."
+          echo "[OK] Source tree clean."
 
       # ============================================================
       # PREPARE DEFCONFIG
@@ -470,7 +511,6 @@ jobs:
 
           mkdir -p "${GITHUB_WORKSPACE}/out"
 
-          # Explicitly guarantee clean source state.
           rm -f "${GITHUB_WORKSPACE}/.config"
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
@@ -479,10 +519,17 @@ jobs:
             O="${GITHUB_WORKSPACE}/out" \
             ARCH="${ARCH}" \
             CROSS_COMPILE="${CROSS_COMPILE}" \
-            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
             CLANG_TRIPLE="${CLANG_TRIPLE}" \
             CC="${CC}" \
             HOSTCC="${HOSTCC}" \
+            HOSTCXX="${HOSTCXX}" \
+            HOSTLD="${HOSTLD}" \
+            HOSTAR="${HOSTAR}" \
+            HOSTAS="${HOSTAS}" \
+            HOSTNM="${HOSTNM}" \
+            HOSTOBJCOPY="${HOSTOBJCOPY}" \
+            HOSTOBJDUMP="${HOSTOBJDUMP}" \
+            HOSTSTRIP="${HOSTSTRIP}" \
             LD="${LD}" \
             AR="${AR}" \
             NM="${NM}" \
@@ -495,24 +542,18 @@ jobs:
             BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
             "${DEFCONFIG}"
 
-          if [ ! -f "${GITHUB_WORKSPACE}/out/.config" ]; then
-            echo "[ERROR] out/.config was not generated."
-            exit 1
-          fi
+          test -f "${GITHUB_WORKSPACE}/out/.config"
 
           echo ""
           echo "[OK] out/.config generated."
 
-          # --------------------------------------------------------
-          # Check source tree immediately.
-          # --------------------------------------------------------
           if [ -f "${GITHUB_WORKSPACE}/.config" ]; then
-            echo "[ERROR] Kbuild generated .config in source tree."
+            echo "[ERROR] Source .config exists."
             exit 1
           fi
 
           if [ -d "${GITHUB_WORKSPACE}/include/config" ]; then
-            echo "[ERROR] Kbuild generated include/config in source tree."
+            echo "[ERROR] Source include/config exists."
             exit 1
           fi
 
@@ -534,7 +575,7 @@ jobs:
           echo "CONFIGURE SUKISU"
           echo "=================================================="
 
-          # KSU core.
+          # Core KSU.
           ./scripts/config \
             --file "${CONFIG}" \
             --enable CONFIG_KSU
@@ -544,9 +585,10 @@ jobs:
             --file "${CONFIG}" \
             --enable CONFIG_KPROBES
 
-          # SukiSU KPROBE hook.
-          if grep -q "CONFIG_KSU_KPROBES_KSUD" "${CONFIG}" || \
-             grep -q "KSU_KPROBES_KSUD" drivers/kernelsu/Kconfig 2>/dev/null; then
+          # Enable KPROBE KSU hook only when supported by this tree.
+          if grep -q "KSU_KPROBES_KSUD" \
+             "${GITHUB_WORKSPACE}/drivers/kernelsu/Kconfig" \
+             2>/dev/null; then
 
             ./scripts/config \
               --file "${CONFIG}" \
@@ -555,7 +597,7 @@ jobs:
 
           fi
 
-          # Existing KSU options, only if present in this tree.
+          # Optional features when present.
           if grep -q "CONFIG_KSU_LSM_SECURITY_HOOKS" "${CONFIG}"; then
             ./scripts/config \
               --file "${CONFIG}" \
@@ -577,15 +619,14 @@ jobs:
               || true
           fi
 
-          # Do NOT force MANUAL_HOOK.
-          # This kernel tree uses KPROBE hook instead.
-
-          # --------------------------------------------------------
           # Resolve dependencies.
-          # --------------------------------------------------------
           make \
             O="${GITHUB_WORKSPACE}/out" \
             ARCH="${ARCH}" \
+            CC="${CC}" \
+            HOSTCC="${HOSTCC}" \
+            HOSTCXX="${HOSTCXX}" \
+            HOSTLD="${HOSTLD}" \
             olddefconfig
 
           echo ""
@@ -620,7 +661,10 @@ jobs:
           echo "SUKISU VERIFICATION"
           echo "=================================================="
 
-          test -d "${GITHUB_WORKSPACE}/drivers/kernelsu"
+          if [ ! -d "${GITHUB_WORKSPACE}/drivers/kernelsu" ]; then
+            echo "[ERROR] drivers/kernelsu missing."
+            exit 1
+          fi
 
           echo "[OK] drivers/kernelsu exists."
 
@@ -640,9 +684,6 @@ jobs:
             "${CONFIG}" \
             || true
 
-          # --------------------------------------------------------
-          # Required core.
-          # --------------------------------------------------------
           if ! grep -q "^CONFIG_KSU=y$" "${CONFIG}"; then
             echo "[ERROR] CONFIG_KSU=y is missing."
             exit 1
@@ -650,9 +691,6 @@ jobs:
 
           echo "[OK] CONFIG_KSU=y"
 
-          # --------------------------------------------------------
-          # KPROBES.
-          # --------------------------------------------------------
           if ! grep -q "^CONFIG_KPROBES=y$" "${CONFIG}"; then
             echo "[ERROR] CONFIG_KPROBES=y is missing."
             exit 1
@@ -660,21 +698,66 @@ jobs:
 
           echo "[OK] CONFIG_KPROBES=y"
 
-          # --------------------------------------------------------
-          # KPROBE KSU hook.
-          # --------------------------------------------------------
-          if grep -q "^CONFIG_KSU_KPROBES_KSUD=y$" "${CONFIG}"; then
-            echo "[OK] CONFIG_KSU_KPROBES_KSUD=y"
-          else
-            echo "[INFO] CONFIG_KSU_KPROBES_KSUD is not present in this tree."
-          fi
-
           echo ""
-          echo "[INFO] CONFIG_KSU_MANUAL_HOOK is NOT forced."
-          echo "[INFO] This build uses the KPROBES path."
+          echo "[INFO] KPROBE hook path is used when supported."
+          echo "[INFO] CONFIG_KSU_MANUAL_HOOK is not forcibly enabled."
 
           echo ""
           echo "[OK] SukiSU configuration verified."
+
+      # ============================================================
+      # BUILD HOST DTC FIRST
+      # ============================================================
+      - name: Build Host DTC
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd "${GITHUB_WORKSPACE}"
+
+          export PATH="${CLANG_BIN}:${GCC_BIN}:${PATH}"
+
+          echo "=================================================="
+          echo "BUILD HOST DTC"
+          echo "=================================================="
+
+          # Explicit host compiler.
+          export HOSTCC=/usr/bin/gcc
+          export HOSTCXX=/usr/bin/g++
+          export HOSTLD=/usr/bin/ld
+          export HOSTAR=/usr/bin/ar
+
+          # Never use clang-11 for host tools.
+          unset CFLAGS
+          unset CXXFLAGS
+          unset LDFLAGS
+
+          make \
+            -C "${GITHUB_WORKSPACE}" \
+            O="${GITHUB_WORKSPACE}/out" \
+            ARCH="${ARCH}" \
+            CC="${CC}" \
+            LD="${LD}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            scripts/dtc/dtc
+
+          if [ ! -x "${GITHUB_WORKSPACE}/out/scripts/dtc/dtc" ]; then
+            echo "[ERROR] Host DTC was not generated."
+            exit 1
+          fi
+
+          echo ""
+          echo "[OK] Host DTC built."
+
+          file "${GITHUB_WORKSPACE}/out/scripts/dtc/dtc"
 
       # ============================================================
       # BUILD IMAGE
@@ -692,7 +775,6 @@ jobs:
           echo "BUILD KERNEL IMAGE"
           echo "=================================================="
 
-          # Keep source tree clean.
           rm -f "${GITHUB_WORKSPACE}/.config"
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
@@ -703,7 +785,6 @@ jobs:
             -j"$(nproc)" \
             ARCH="${ARCH}" \
             CC="${CC}" \
-            HOSTCC="${HOSTCC}" \
             LD="${LD}" \
             AR="${AR}" \
             NM="${NM}" \
@@ -711,16 +792,27 @@ jobs:
             OBJDUMP="${OBJDUMP}" \
             STRIP="${STRIP}" \
             READELF="${READELF}" \
-            LLVM="${LLVM}" \
-            LLVM_IAS="${LLVM_IAS}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
-            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
             CLANG_TRIPLE="${CLANG_TRIPLE}" \
             BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
             BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
             Image
 
-          test -f "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image"
+          if [ ! -f "${GITHUB_WORKSPACE}/out/arch/arm64/boot/Image" ]; then
+            echo "[ERROR] Image missing."
+            exit 1
+          fi
 
           echo ""
           echo "[OK] Image generated."
@@ -744,17 +836,12 @@ jobs:
           echo "BUILD MODULES"
           echo "=================================================="
 
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
-          rm -rf "${GITHUB_WORKSPACE}/include/config"
-
           make \
             -C "${GITHUB_WORKSPACE}" \
             O="${GITHUB_WORKSPACE}/out" \
             -j"$(nproc)" \
             ARCH="${ARCH}" \
             CC="${CC}" \
-            HOSTCC="${HOSTCC}" \
             LD="${LD}" \
             AR="${AR}" \
             NM="${NM}" \
@@ -762,22 +849,32 @@ jobs:
             OBJDUMP="${OBJDUMP}" \
             STRIP="${STRIP}" \
             READELF="${READELF}" \
-            LLVM="${LLVM}" \
-            LLVM_IAS="${LLVM_IAS}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
-            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
             CLANG_TRIPLE="${CLANG_TRIPLE}" \
             BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
             BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
             modules
 
-          echo ""
-          echo "Module count:"
+          MODULE_COUNT=$(
+            find "${GITHUB_WORKSPACE}/out" \
+              -type f \
+              -name "*.ko" \
+              | wc -l
+          )
 
-          find "${GITHUB_WORKSPACE}/out" \
-            -type f \
-            -name "*.ko" \
-            | wc -l
+          echo ""
+          echo "Module count: ${MODULE_COUNT}"
 
       # ============================================================
       # BUILD DTBS
@@ -795,17 +892,12 @@ jobs:
           echo "BUILD DTBS"
           echo "=================================================="
 
-          rm -f "${GITHUB_WORKSPACE}/.config"
-          rm -f "${GITHUB_WORKSPACE}/.config.old"
-          rm -rf "${GITHUB_WORKSPACE}/include/config"
-
           make \
             -C "${GITHUB_WORKSPACE}" \
             O="${GITHUB_WORKSPACE}/out" \
             -j"$(nproc)" \
             ARCH="${ARCH}" \
             CC="${CC}" \
-            HOSTCC="${HOSTCC}" \
             LD="${LD}" \
             AR="${AR}" \
             NM="${NM}" \
@@ -813,10 +905,18 @@ jobs:
             OBJDUMP="${OBJDUMP}" \
             STRIP="${STRIP}" \
             READELF="${READELF}" \
-            LLVM="${LLVM}" \
-            LLVM_IAS="${LLVM_IAS}" \
+            HOSTCC=/usr/bin/gcc \
+            HOSTCXX=/usr/bin/g++ \
+            HOSTLD=/usr/bin/ld \
+            HOSTAR=/usr/bin/ar \
+            HOSTAS=/usr/bin/as \
+            HOSTNM=/usr/bin/nm \
+            HOSTOBJCOPY=/usr/bin/objcopy \
+            HOSTOBJDUMP=/usr/bin/objdump \
+            HOSTSTRIP=/usr/bin/strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
-            CROSS_COMPILE_ARM32="${CROSS_COMPILE_ARM32}" \
             CLANG_TRIPLE="${CLANG_TRIPLE}" \
             BSP_BUILD_FAMILY="${BSP_BUILD_FAMILY}" \
             BSP_BUILD_ANDROID_OS="${BSP_BUILD_ANDROID_OS}" \
@@ -847,7 +947,9 @@ jobs:
           echo "FINAL BUILD VERIFICATION"
           echo "=================================================="
 
-          # Image.
+          # --------------------------------------------------------
+          # IMAGE
+          # --------------------------------------------------------
           if [ ! -f "${OUT}/arch/arm64/boot/Image" ]; then
             echo "[ERROR] Image missing."
             exit 1
@@ -855,20 +957,24 @@ jobs:
 
           echo "[OK] Image exists."
 
-          echo ""
-          ls -lh "${OUT}/arch/arm64/boot/Image"
+          ls -lh \
+            "${OUT}/arch/arm64/boot/Image"
 
           echo ""
           echo "File type:"
 
-          file "${OUT}/arch/arm64/boot/Image"
+          file \
+            "${OUT}/arch/arm64/boot/Image"
 
           echo ""
           echo "SHA256:"
 
-          sha256sum "${OUT}/arch/arm64/boot/Image"
+          sha256sum \
+            "${OUT}/arch/arm64/boot/Image"
 
-          # DTBs.
+          # --------------------------------------------------------
+          # DTB
+          # --------------------------------------------------------
           echo ""
           echo "=================================================="
           echo "DTB / DTBO"
@@ -884,7 +990,9 @@ jobs:
 
           echo "DTB/DTBO count: ${DTB_COUNT}"
 
-          # Config.
+          # --------------------------------------------------------
+          # SUKISU
+          # --------------------------------------------------------
           echo ""
           echo "=================================================="
           echo "SUKISU CONFIG"
@@ -894,6 +1002,22 @@ jobs:
             "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
             "${OUT}/.config" \
             || true
+
+          # --------------------------------------------------------
+          # HOST DTC
+          # --------------------------------------------------------
+          echo ""
+          echo "=================================================="
+          echo "HOST DTC"
+          echo "=================================================="
+
+          if [ -x "${OUT}/scripts/dtc/dtc" ]; then
+            echo "[OK] DTC exists."
+            file "${OUT}/scripts/dtc/dtc"
+          else
+            echo "[ERROR] DTC missing."
+            exit 1
+          fi
 
       # ============================================================
       # COLLECT ARTIFACTS
@@ -911,7 +1035,7 @@ jobs:
           mkdir -p "${ART}"
           mkdir -p "${ART}/dtbs"
           mkdir -p "${ART}/modules"
-          mkdir -p "${ART}/sukisu"
+          mkdir -p "${ART}/kernelsu"
 
           # --------------------------------------------------------
           # IMAGE
@@ -931,14 +1055,18 @@ jobs:
           # SYSTEM MAP
           # --------------------------------------------------------
           if [ -f "${OUT}/System.map" ]; then
-            cp "${OUT}/System.map" "${ART}/System.map"
+            cp \
+              "${OUT}/System.map" \
+              "${ART}/System.map"
           fi
 
           # --------------------------------------------------------
           # MODULE SYMVERS
           # --------------------------------------------------------
           if [ -f "${OUT}/Module.symvers" ]; then
-            cp "${OUT}/Module.symvers" "${ART}/Module.symvers"
+            cp \
+              "${OUT}/Module.symvers" \
+              "${ART}/Module.symvers"
           fi
 
           # --------------------------------------------------------
@@ -983,32 +1111,32 @@ jobs:
           done
 
           # --------------------------------------------------------
-          # SUKISU INFO
+          # KERNELSU INFO
           # --------------------------------------------------------
           echo "SukiSU Ultra" \
-            > "${ART}/sukisu/version"
+            > "${ART}/kernelsu/version"
 
           echo "KPROBES" \
-            > "${ART}/sukisu/hook"
+            > "${ART}/kernelsu/hook"
 
           if [ -d "${GITHUB_WORKSPACE}/drivers/kernelsu/.git" ]; then
 
             git \
               -C "${GITHUB_WORKSPACE}/drivers/kernelsu" \
               rev-parse HEAD \
-              > "${ART}/sukisu/commit"
+              > "${ART}/kernelsu/commit"
 
           else
 
             echo "builtin" \
-              > "${ART}/sukisu/commit"
+              > "${ART}/kernelsu/commit"
 
           fi
 
           grep -E \
             "^CONFIG_KSU=|^CONFIG_KPROBES=|^CONFIG_KSU_KPROBES_KSUD=|^CONFIG_KSU_LSM_SECURITY_HOOKS=|^CONFIG_KSU_FEATURE_SULOG=|^CONFIG_KSU_FEATURE_ADBROOT=" \
             "${OUT}/.config" \
-            > "${ART}/sukisu/config" \
+            > "${ART}/kernelsu/config" \
             || true
 
           # --------------------------------------------------------
@@ -1038,7 +1166,7 @@ jobs:
 
           echo ""
           echo "=================================================="
-          echo "ARTIFACT LIST"
+          echo "ARTIFACTS"
           echo "=================================================="
 
           find "${ART}" \
