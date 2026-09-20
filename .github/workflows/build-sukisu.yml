@@ -311,10 +311,6 @@ jobs:
 
             # ------------------------------------------------------
             # HOST TOOLCHAIN
-            #
-            # IMPORTANT:
-            # Kernel = Clang
-            # Host tools = GCC
             # ------------------------------------------------------
             echo "HOSTCC=/usr/bin/gcc"
             echo "HOSTCXX=/usr/bin/g++"
@@ -325,6 +321,9 @@ jobs:
             echo "HOSTOBJCOPY=/usr/bin/objcopy"
             echo "HOSTOBJDUMP=/usr/bin/objdump"
             echo "HOSTSTRIP=/usr/bin/strip"
+            
+            # Export HOST_EXTRACFLAGS directly into environment
+            echo "HOST_EXTRACFLAGS=-fcommon"
 
             echo "BSP_BUILD_FAMILY=sharkl3"
             echo "BSP_BUILD_ANDROID_OS=y"
@@ -516,6 +515,8 @@ jobs:
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
 
+          export HOST_EXTRACFLAGS="-fcommon"
+
           make \
             O="${GITHUB_WORKSPACE}/out" \
             ARCH="${ARCH}" \
@@ -531,7 +532,6 @@ jobs:
             HOSTOBJCOPY="${HOSTOBJCOPY}" \
             HOSTOBJDUMP="${HOSTOBJDUMP}" \
             HOSTSTRIP="${HOSTSTRIP}" \
-            HOST_EXTRACFLAGS="-fcommon" \
             LD="${LD}" \
             AR="${AR}" \
             NM="${NM}" \
@@ -619,6 +619,8 @@ jobs:
               || true
           fi
 
+          export HOST_EXTRACFLAGS="-fcommon"
+
           make \
             O="${GITHUB_WORKSPACE}/out" \
             ARCH="${ARCH}" \
@@ -626,7 +628,6 @@ jobs:
             HOSTCC="${HOSTCC}" \
             HOSTCXX="${HOSTCXX}" \
             HOSTLD="${HOSTLD}" \
-            HOST_EXTRACFLAGS="-fcommon" \
             olddefconfig
 
           echo ""
@@ -723,6 +724,8 @@ jobs:
           rm -f "${GITHUB_WORKSPACE}/.config.old"
           rm -rf "${GITHUB_WORKSPACE}/include/config"
 
+          export HOST_EXTRACFLAGS="-fcommon"
+
           make \
             -C "${GITHUB_WORKSPACE}" \
             O="${GITHUB_WORKSPACE}/out" \
@@ -745,7 +748,6 @@ jobs:
             HOSTOBJCOPY=/usr/bin/objcopy \
             HOSTOBJDUMP=/usr/bin/objdump \
             HOSTSTRIP=/usr/bin/strip \
-            HOST_EXTRACFLAGS="-fcommon" \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
@@ -779,6 +781,8 @@ jobs:
           echo "BUILD MODULES"
           echo "=================================================="
 
+          export HOST_EXTRACFLAGS="-fcommon"
+
           make \
             -C "${GITHUB_WORKSPACE}" \
             O="${GITHUB_WORKSPACE}/out" \
@@ -801,7 +805,6 @@ jobs:
             HOSTOBJCOPY=/usr/bin/objcopy \
             HOSTOBJDUMP=/usr/bin/objdump \
             HOSTSTRIP=/usr/bin/strip \
-            HOST_EXTRACFLAGS="-fcommon" \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
@@ -834,6 +837,8 @@ jobs:
           echo "BUILD DTBS"
           echo "=================================================="
 
+          export HOST_EXTRACFLAGS="-fcommon"
+
           make \
             -C "${GITHUB_WORKSPACE}" \
             O="${GITHUB_WORKSPACE}/out" \
@@ -856,7 +861,6 @@ jobs:
             HOSTOBJCOPY=/usr/bin/objcopy \
             HOSTOBJDUMP=/usr/bin/objdump \
             HOSTSTRIP=/usr/bin/strip \
-            HOST_EXTRACFLAGS="-fcommon" \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
