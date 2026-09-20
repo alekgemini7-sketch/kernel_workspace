@@ -156,7 +156,7 @@ jobs:
           make --version 2>/dev/null | head -n 1 || true
 
       # ============================================================
-      # CLEAN SOURCE TREE
+      # CLEAN SOURCE TREE & PATCH DTC
       # ============================================================
       - name: Clean Source Tree
         shell: bash
@@ -166,7 +166,7 @@ jobs:
           cd "${GITHUB_WORKSPACE}"
 
           echo "=================================================="
-          echo "CLEAN SOURCE TREE"
+          echo "CLEAN SOURCE TREE & PATCH"
           echo "=================================================="
 
           rm -rf "${GITHUB_WORKSPACE}/out"
@@ -179,6 +179,9 @@ jobs:
 
           mkdir -p "${GITHUB_WORKSPACE}/out"
 
+          # Fix dtc compile error on GCC 10+ (multiple definition of yylloc)
+          find scripts/dtc -type f -name "dtc-lexer.lex.c_shipped" -exec sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/' {} + || true
+
           echo ""
           echo "Checking source tree..."
 
@@ -186,7 +189,7 @@ jobs:
           test ! -e "${GITHUB_WORKSPACE}/.config.old"
           test ! -e "${GITHUB_WORKSPACE}/include/config"
 
-          echo "[OK] Source tree clean."
+          echo "[OK] Source tree clean and patched."
 
       # ============================================================
       # SETUP TOOLCHAIN
@@ -528,6 +531,7 @@ jobs:
             HOSTOBJCOPY="${HOSTOBJCOPY}" \
             HOSTOBJDUMP="${HOSTOBJDUMP}" \
             HOSTSTRIP="${HOSTSTRIP}" \
+            HOST_EXTRACFLAGS="-fcommon" \
             LD="${LD}" \
             AR="${AR}" \
             NM="${NM}" \
@@ -622,6 +626,7 @@ jobs:
             HOSTCC="${HOSTCC}" \
             HOSTCXX="${HOSTCXX}" \
             HOSTLD="${HOSTLD}" \
+            HOST_EXTRACFLAGS="-fcommon" \
             olddefconfig
 
           echo ""
@@ -740,6 +745,7 @@ jobs:
             HOSTOBJCOPY=/usr/bin/objcopy \
             HOSTOBJDUMP=/usr/bin/objdump \
             HOSTSTRIP=/usr/bin/strip \
+            HOST_EXTRACFLAGS="-fcommon" \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
@@ -795,6 +801,7 @@ jobs:
             HOSTOBJCOPY=/usr/bin/objcopy \
             HOSTOBJDUMP=/usr/bin/objdump \
             HOSTSTRIP=/usr/bin/strip \
+            HOST_EXTRACFLAGS="-fcommon" \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
@@ -849,6 +856,7 @@ jobs:
             HOSTOBJCOPY=/usr/bin/objcopy \
             HOSTOBJDUMP=/usr/bin/objdump \
             HOSTSTRIP=/usr/bin/strip \
+            HOST_EXTRACFLAGS="-fcommon" \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE="${CROSS_COMPILE}" \
