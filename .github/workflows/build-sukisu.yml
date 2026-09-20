@@ -322,9 +322,6 @@ jobs:
             echo "HOSTOBJDUMP=/usr/bin/objdump"
             echo "HOSTSTRIP=/usr/bin/strip"
             
-            # Export HOST_EXTRACFLAGS directly into environment
-            echo "HOST_EXTRACFLAGS=-fcommon"
-
             echo "BSP_BUILD_FAMILY=sharkl3"
             echo "BSP_BUILD_ANDROID_OS=y"
 
@@ -516,6 +513,8 @@ jobs:
           rm -rf "${GITHUB_WORKSPACE}/include/config"
 
           export HOST_EXTRACFLAGS="-fcommon"
+          export HOSTLDLIBS_dtc="-lyaml"
+          export HOSTLOADLIBS_dtc="-lyaml"
 
           make \
             O="${GITHUB_WORKSPACE}/out" \
@@ -620,6 +619,8 @@ jobs:
           fi
 
           export HOST_EXTRACFLAGS="-fcommon"
+          export HOSTLDLIBS_dtc="-lyaml"
+          export HOSTLOADLIBS_dtc="-lyaml"
 
           make \
             O="${GITHUB_WORKSPACE}/out" \
@@ -725,6 +726,8 @@ jobs:
           rm -rf "${GITHUB_WORKSPACE}/include/config"
 
           export HOST_EXTRACFLAGS="-fcommon"
+          export HOSTLDLIBS_dtc="-lyaml"
+          export HOSTLOADLIBS_dtc="-lyaml"
 
           make \
             -C "${GITHUB_WORKSPACE}" \
@@ -782,6 +785,8 @@ jobs:
           echo "=================================================="
 
           export HOST_EXTRACFLAGS="-fcommon"
+          export HOSTLDLIBS_dtc="-lyaml"
+          export HOSTLOADLIBS_dtc="-lyaml"
 
           make \
             -C "${GITHUB_WORKSPACE}" \
@@ -838,6 +843,8 @@ jobs:
           echo "=================================================="
 
           export HOST_EXTRACFLAGS="-fcommon"
+          export HOSTLDLIBS_dtc="-lyaml"
+          export HOSTLOADLIBS_dtc="-lyaml"
 
           make \
             -C "${GITHUB_WORKSPACE}" \
