@@ -3637,4 +3637,14 @@ const struct proc_ns_operations mntns_operations = {
 	.put		= mntns_put,
 	.install	= mntns_install,
 	.owner		= mntns_owner,
+
+
 };
+
+int path_umount(struct path *path, int flags);
+int path_umount(struct path *path, int flags)
+{
+	struct mount *mnt = real_mount(path->mnt);
+	return do_umount(mnt, flags);
+}
+EXPORT_SYMBOL(path_umount);
