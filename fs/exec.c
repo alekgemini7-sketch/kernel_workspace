@@ -1712,14 +1712,11 @@ static int do_execveat_common(int fd, struct filename *filename,
 	struct files_struct *displaced;
 	int retval;
 
-	struct linux_binprm *bprm;
-	int retval;
-
 #ifdef CONFIG_KSU
-+	if (unlikely(ksu_execveat_hook))
-+		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-+	else
-+		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
+if (unlikely(ksu_execveat_hook))
+	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
+else
+	ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
 #endif
 
 	if (IS_ERR(filename))
