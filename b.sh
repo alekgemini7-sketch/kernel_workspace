@@ -60,9 +60,9 @@ scripts/config --file "$OUT/.config" --enable KSU
 scripts/config --file "$OUT/.config" --enable KSU_MANUAL_HOOK
 scripts/config --file "$OUT/.config" --disable KPROBES
 scripts/config --file "$OUT/.config" --disable KPROBE_EVENTS
+scripts/config --file "$OUT/.config" --disable KSU_TRACEPOINT_HOOK || true
+scripts/config --file "$OUT/.config" --disable KSU_SUSFS || true
 scripts/config --file "$OUT/.config" --enable OVERLAY_FS
-scripts/config --file "$OUT/.config" --enable MODULES || true
-
 make -C "$KERNEL_ROOT" O="$OUT" ARCH="$ARCH" SUBARCH="$SUBARCH" CC="$CC" LD="$LD" HOSTCC="$HOSTCC" HOSTCXX="$HOSTCXX" HOSTLD="$HOSTLD" olddefconfig
 
 # ============================================================
