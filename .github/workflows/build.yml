@@ -39,7 +39,7 @@ jobs:
       - name: Setup KernelSU Next (Legacy Branch)
         run: |
           rm -rf drivers/kernelsu
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
+curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s legacy
 
       - name: Run Build Script (b.sh)
         run: |
