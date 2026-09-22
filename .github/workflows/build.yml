@@ -1,4 +1,4 @@
-name: Build Kernel - KernelSU Next (Manual Hook)
+name: Build Kernel - ReSukiSu (Manual Hook)
 
 on:
   workflow_dispatch:
