@@ -1,4 +1,4 @@
-name: Build Kernel - ReSukiSu (Manual Hook)
+name: Build Kernel - ReSukiSU (Manual Hook)
 
 on:
   workflow_dispatch:
@@ -36,10 +36,11 @@ jobs:
           tar -xf gcc.tar.xz -C toolchains/gcc-14.3 --strip-components=1
           rm gcc.tar.xz
 
-      - name: Setup KernelSU Next (Legacy Branch)
+      - name: Setup ReSukiSU
         run: |
           rm -rf drivers/kernelsu
-curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s legacy
+          echo "[+] Mengunduh source code ReSukiSU..."
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
 
       - name: Run Build Script (b.sh)
         run: |
@@ -52,20 +53,20 @@ curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup
           cp out/arch/arm64/boot/Image AK3/
           cd AK3
           sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-          sed -i "s/kernel.string=.*/kernel.string=A032F-KSU-Next-ManualHook/g" anykernel.sh
+          sed -i "s/kernel.string=.*/kernel.string=A032F-ReSukiSU-ManualHook/g" anykernel.sh
           sed -i 's|BLOCK=.*|BLOCK=auto;|g' anykernel.sh
           sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/g' anykernel.sh
           sed -i '/# init.rc/,/append_file fstab.tuna.*/d' anykernel.sh
           
-          zip -r9 "../AnyKernel3-A032F-KSU-Next.zip" . -x '.git/*' '.github/*'
+          zip -r9 "../AnyKernel3-A032F-ReSukiSU.zip" . -x '.git/*' '.github/*'
           cd ..
           echo "[OK] AnyKernel3 zip generated."
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-A032F-KSU-Next
+          name: Kernel-A032F-ReSukiSU
           path: |
             output_artifacts/
-            AnyKernel3-A032F-KSU-Next.zip
+            AnyKernel3-A032F-ReSukiSU.zip
           if-no-files-found: error
